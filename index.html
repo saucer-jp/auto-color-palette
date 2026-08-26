@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="light dark" />
+    <meta
+      name="description"
+      content="選択した色からRelative Color Syntaxのoklch()でカラーパレットを作成します。"
+    />
+    <title>Auto Color Palette</title>
+    <link rel="stylesheet" href="./styles.css" />
+    <script type="module" src="./app.js"></script>
+  </head>
+  <body>
+    <main class="app-shell">
+      <header class="app-header">
+        <div class="header-copy">
+          <p class="eyebrow">COLOR SYSTEM BUILDER</p>
+          <h1>Auto Color Palette</h1>
+          <p class="header-description">
+            ひとつの色から、色相と明度のデザイントークンを組み立てます。
+          </p>
+        </div>
+        <div class="header-badge" aria-label="生成方式">
+          <span class="badge-dot" aria-hidden="true"></span>
+          <span id="render-mode">CSS relative OKLCH</span>
+        </div>
+      </header>
+
+      <div class="workspace">
+        <aside class="settings-panel" aria-label="パレット設定">
+          <div class="panel-heading">
+            <div>
+              <p class="section-kicker">SETTINGS</p>
+              <h2>Palette recipe</h2>
+            </div>
+            <button
+              class="reset-button"
+              id="reset-button"
+              type="button"
+              aria-label="設定を初期値に戻す"
+            >
+              <span aria-hidden="true">↺</span>
+            </button>
+          </div>
+
+          <div class="control-stack">
+            <div class="control-field">
+              <div class="field-label-row">
+                <label for="base-color">Base color</label>
+                <output id="base-color-value" for="base-color">#3B82F6</output>
+              </div>
+              <div class="color-control">
+                <input id="base-color" type="color" value="#3b82f6" />
+                <div>
+                  <p class="control-value" id="base-color-caption">#3B82F6</p>
+                  <p class="control-help">パレットの基準色</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
+                <label for="hue-count">Hue count</label>
+                <output id="hue-count-value" for="hue-count">12 hues</output>
+              </div>
+              <input
+                id="hue-count"
+                class="range-input"
+                type="range"
+                min="2"
+                max="24"
+                step="1"
+                value="12"
+              />
+              <p class="control-help">360°を等分する色相の数</p>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
+                <label for="step-count">Color steps</label>
+                <output id="step-count-value" for="step-count">12 steps</output>
+              </div>
+              <input
+                id="step-count"
+                class="range-input"
+                type="range"
+                min="5"
+                max="30"
+                step="1"
+                value="12"
+              />
+              <p class="control-help">最暗色から最明色までの段階数</p>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
+                <label for="gap">Grid gap</label>
+                <output id="gap-value" for="gap">8px</output>
+              </div>
+              <input
+                id="gap"
+                class="range-input"
+                type="range"
+                min="0"
+                max="40"
+                step="1"
+                value="8"
+              />
+              <p class="control-help">色相列とカラーステップの間隔</p>
+            </div>
+          </div>
+
+          <div class="recipe-card">
+            <p class="section-kicker">TOKEN LOGIC</p>
+            <p class="recipe-title">Base l → darkest / lightest</p>
+            <p class="recipe-description">
+              選択色の明度を基準に、最暗色と最明色を決めて中間を均等に補完します。
+            </p>
+            <div class="recipe-scale" aria-hidden="true">
+              <span class="recipe-scale-dark"></span>
+              <span class="recipe-scale-mid"></span>
+              <span class="recipe-scale-light"></span>
+            </div>
+          </div>
+
+          <div class="settings-footer">
+            <p>
+              各スウォッチをクリックすると、描画された色のHEX値をコピーします。
+            </p>
+          </div>
+        </aside>
+
+        <section class="preview-panel" aria-labelledby="preview-title">
+          <div class="preview-toolbar">
+            <div>
+              <p class="section-kicker">LIVE PREVIEW</p>
+              <h2 id="preview-title">Palette field</h2>
+            </div>
+            <div class="preview-summary">
+              <p id="palette-summary" role="status" aria-live="polite">
+                12 hues × 12 steps = 144 colors
+              </p>
+              <p class="preview-hint">クリックでHEXをコピー</p>
+            </div>
+          </div>
+
+          <div
+            class="compatibility-note"
+            id="compatibility-note"
+            role="status"
+            aria-live="polite"
+            hidden
+          ></div>
+
+          <div class="palette-frame">
+            <div
+              class="palette-grid"
+              id="palette-grid"
+              aria-label="生成されたカラーパレット"
+            ></div>
+          </div>
+
+          <div class="feedback-area">
+            <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
+            <div class="copy-fallback" id="copy-fallback" hidden>
+              <label for="copy-fallback-value">手動でコピーする値</label>
+              <div class="copy-fallback-row">
+                <input id="copy-fallback-value" type="text" readonly />
+                <button id="retry-copy" type="button">再試行</button>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </main>
+
+    <noscript>
+      <p class="noscript-message">
+        このアプリを利用するにはJavaScriptを有効にしてください。
+      </p>
+    </noscript>
+  </body>
+</html>
