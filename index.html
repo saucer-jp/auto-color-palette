@@ -78,6 +78,44 @@
 
             <div class="control-field">
               <div class="field-label-row">
+                <label for="darkest-lightness">Darkest lightness</label>
+                <output id="darkest-lightness-value" for="darkest-lightness">
+                  0.263
+                </output>
+              </div>
+              <input
+                id="darkest-lightness"
+                class="range-input"
+                type="range"
+                min="0"
+                max="1"
+                step="0.001"
+                value="0.263"
+              />
+              <p class="control-help">最も暗い色のOKLCH l（0〜1）</p>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
+                <label for="lightest-lightness">Lightest lightness</label>
+                <output id="lightest-lightness-value" for="lightest-lightness">
+                  0.983
+                </output>
+              </div>
+              <input
+                id="lightest-lightness"
+                class="range-input"
+                type="range"
+                min="0"
+                max="1"
+                step="0.001"
+                value="0.983"
+              />
+              <p class="control-help">最も明るい色のOKLCH l（0〜1）</p>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
                 <label for="hue-count">Hue count</label>
                 <output id="hue-count-value" for="hue-count">12 hues</output>
               </div>
@@ -130,9 +168,9 @@
 
           <div class="recipe-card">
             <p class="section-kicker">TOKEN LOGIC</p>
-            <p class="recipe-title">Base l → darkest / lightest</p>
+            <p class="recipe-title">Base hue + chroma → lightness range</p>
             <p class="recipe-description">
-              選択色の明度を基準に、最暗色と最明色を決めて中間を均等に補完します。
+              選択色の色相・彩度を基準に、設定した最暗色から最明色まで中間を均等に補完します。
             </p>
             <div class="recipe-scale" aria-hidden="true">
               <span class="recipe-scale-dark"></span>

@@ -8,8 +8,9 @@ input[type="color"]で選んだ色を基準に、CSS Relative Color Syntaxのokl
 - カラーステップ: 5〜30
 - Grid gap: 0〜40px
 - パレット背景色を変更可能
+- 最暗色・最明色のOKLCH l: 0〜1
 - 色相は360°を均等分割
-- 明度は選択色のlを基準に、最暗色から最明色まで補間
+- 選択色の色相・彩度を基準に、設定した最暗色lから最明色lまで補間
 - パレットをクリックすると描画色のHEX値をコピー
 - 設定値はブラウザのlocalStorageに保存
 - CSS Relative Color Syntax未対応環境ではJavaScriptへフォールバック

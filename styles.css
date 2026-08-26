@@ -52,6 +52,10 @@
     --danger-dark: #ff9a94;
     --danger: var(--danger-light);
     --base-color: #3b82f6;
+    --darkest-tone-delta: -0.36;
+    --lightest-tone-delta: 0.36;
+    --darkest-color: var(--base-color);
+    --lightest-color: var(--base-color);
     --palette-background: #f9faf7;
     --palette-gap: 8px;
     --hue-count: 12;
@@ -415,7 +419,7 @@
   }
 
   .recipe-scale-dark {
-    background: var(--base-color);
+    background: var(--darkest-color);
   }
 
   .recipe-scale-mid {
@@ -423,26 +427,26 @@
   }
 
   .recipe-scale-light {
-    background: var(--base-color);
+    background: var(--lightest-color);
   }
 
   @supports (background-color: oklch(from #000 l c h)) {
     .recipe-scale-dark {
-      background: oklch(from var(--base-color) clamp(0, calc(l - 0.36), 1) c h);
+      background: oklch(
+        from var(--base-color)
+        clamp(0, calc(l + var(--darkest-tone-delta)), 1)
+        c
+        h
+      );
     }
 
     .recipe-scale-light {
-      background: oklch(from var(--base-color) clamp(0, calc(l + 0.36), 1) c h);
-    }
-  }
-
-  @supports not (background-color: oklch(from #000 l c h)) {
-    .recipe-scale-dark {
-      filter: brightness(0.6) saturate(0.8);
-    }
-
-    .recipe-scale-light {
-      filter: brightness(1.4) saturate(0.7);
+      background: oklch(
+        from var(--base-color)
+        clamp(0, calc(l + var(--lightest-tone-delta)), 1)
+        c
+        h
+      );
     }
   }
 

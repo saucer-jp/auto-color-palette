@@ -1,5 +1,7 @@
 const DEFAULTS = Object.freeze({
   baseColor: "#3B82F6",
+  darkestLightness: 0.263,
+  lightestLightness: 0.983,
   hueCount: 12,
   stepCount: 12,
   gap: 8,
@@ -14,6 +16,7 @@ const LIMITS = Object.freeze({
   hueCount: { min: 2, max: 24 },
   stepCount: { min: 5, max: 30 },
   gap: { min: 0, max: 40 },
+  lightness: { min: 0, max: 1 },
 });
 
 const STORAGE_KEY = "auto-color-palette-settings-v1";
@@ -27,6 +30,8 @@ function getDefaultPaletteBackground() {
 const state = {
   baseColor: DEFAULTS.baseColor,
   paletteBackground: getDefaultPaletteBackground(),
+  darkestLightness: DEFAULTS.darkestLightness,
+  lightestLightness: DEFAULTS.lightestLightness,
   hueCount: DEFAULTS.hueCount,
   stepCount: DEFAULTS.stepCount,
   gap: DEFAULTS.gap,
@@ -40,6 +45,10 @@ const elements = {
   paletteBackground: document.querySelector("#palette-background"),
   paletteBackgroundValue: document.querySelector("#palette-background-value"),
   paletteBackgroundCaption: document.querySelector("#palette-background-caption"),
+  darkestLightness: document.querySelector("#darkest-lightness"),
+  darkestLightnessValue: document.querySelector("#darkest-lightness-value"),
+  lightestLightness: document.querySelector("#lightest-lightness"),
+  lightestLightnessValue: document.querySelector("#lightest-lightness-value"),
   hueCount: document.querySelector("#hue-count"),
   hueCountValue: document.querySelector("#hue-count-value"),
   stepCount: document.querySelector("#step-count"),
@@ -103,6 +112,36 @@ function normalizeRangeValue(value, limits, fallback) {
     : fallback;
 }
 
+function normalizeLightness(value, fallback) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? Math.round(
+        clamp(number, LIMITS.lightness.min, LIMITS.lightness.max) * 1000,
+      ) / 1000
+    : fallback;
+}
+
+function formatLightness(value) {
+  return value.toFixed(3);
+}
+
+function normalizeLightnessRange(darkestLightness, lightestLightness) {
+  const darkest = normalizeLightness(
+    darkestLightness,
+    DEFAULTS.darkestLightness,
+  );
+  const lightest = normalizeLightness(
+    lightestLightness,
+    DEFAULTS.lightestLightness,
+  );
+
+  return {
+    darkestLightness: Math.min(darkest, lightest),
+    lightestLightness: Math.max(darkest, lightest),
+  };
+}
+
 function loadSettings() {
   try {
     const storedValue = window.localStorage.getItem(STORAGE_KEY);
@@ -115,12 +154,18 @@ function loadSettings() {
       return null;
     }
 
+    const lightnessRange = normalizeLightnessRange(
+      storedSettings.darkestLightness,
+      storedSettings.lightestLightness,
+    );
+
     return {
       baseColor: normalizeHex(storedSettings.baseColor, DEFAULTS.baseColor),
       paletteBackground: normalizeHex(
         storedSettings.paletteBackground,
         getDefaultPaletteBackground(),
       ),
+      ...lightnessRange,
       hueCount: normalizeRangeValue(
         storedSettings.hueCount,
         LIMITS.hueCount,
@@ -150,9 +195,11 @@ function setStorageStatus(message, kind) {
 
 function saveSettings() {
   const settings = {
-    version: 1,
+    version: 2,
     baseColor: state.baseColor,
     paletteBackground: state.paletteBackground,
+    darkestLightness: state.darkestLightness,
+    lightestLightness: state.lightestLightness,
     hueCount: state.hueCount,
     stepCount: state.stepCount,
     gap: state.gap,
@@ -279,11 +326,11 @@ function getReadableTextColor(hex) {
   return contrastOnWhite >= contrastOnBlack ? "#FFFFFF" : "#101312";
 }
 
-function getToneDelta(stepIndex, stepCount) {
+function getToneDelta(stepIndex, stepCount, baseLightness) {
   const progress = stepIndex / Math.max(stepCount - 1, 1);
-  const darkestToken = -0.36;
-  const lightestToken = 0.36;
-  return darkestToken + (lightestToken - darkestToken) * progress;
+  const darkestDelta = state.darkestLightness - baseLightness;
+  const lightestDelta = state.lightestLightness - baseLightness;
+  return darkestDelta + (lightestDelta - darkestDelta) * progress;
 }
 
 function formatDegree(degree) {
@@ -294,7 +341,8 @@ function updateRangeProgress(input) {
   const min = Number(input.min);
   const max = Number(input.max);
   const value = Number(input.value);
-  const progress = ((value - min) / (max - min)) * 100;
+  const progress =
+    max === min ? 100 : clamp(((value - min) / (max - min)) * 100, 0, 100);
   input.style.setProperty("--range-progress", progress + "%");
 }
 
@@ -305,6 +353,12 @@ function syncControls() {
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.paletteBackgroundValue.textContent = state.paletteBackground;
   elements.paletteBackgroundCaption.textContent = state.paletteBackground;
+  elements.darkestLightness.max = formatLightness(state.lightestLightness);
+  elements.darkestLightness.value = formatLightness(state.darkestLightness);
+  elements.darkestLightnessValue.textContent = formatLightness(state.darkestLightness);
+  elements.lightestLightness.min = formatLightness(state.darkestLightness);
+  elements.lightestLightness.value = formatLightness(state.lightestLightness);
+  elements.lightestLightnessValue.textContent = formatLightness(state.lightestLightness);
   elements.hueCount.value = String(state.hueCount);
   elements.hueCountValue.textContent = state.hueCount + " hues";
   elements.stepCount.value = String(state.stepCount);
@@ -312,13 +366,15 @@ function syncControls() {
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
 
+  updateRangeProgress(elements.darkestLightness);
+  updateRangeProgress(elements.lightestLightness);
   updateRangeProgress(elements.hueCount);
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
 }
 
 function createSwatch(baseOklch, hueOffset, hueIndex, stepIndex) {
-  const toneDelta = getToneDelta(stepIndex, state.stepCount);
+  const toneDelta = getToneDelta(stepIndex, state.stepCount, baseOklch.L);
   const fallbackLightness = clamp(baseOklch.L + toneDelta, 0, 1);
   const fallbackHex = oklchToHex(
     fallbackLightness,
@@ -536,10 +592,22 @@ async function copySwatch(swatch) {
 
 function renderPalette() {
   const baseOklch = srgbToOklch(state.baseColor);
+  const darkestToneDelta = state.darkestLightness - baseOklch.L;
+  const lightestToneDelta = state.lightestLightness - baseOklch.L;
   const fragment = document.createDocumentFragment();
 
   elements.root.style.setProperty("--base-color", state.baseColor);
   elements.root.style.setProperty("--palette-background", state.paletteBackground);
+  elements.root.style.setProperty("--darkest-tone-delta", String(darkestToneDelta));
+  elements.root.style.setProperty("--lightest-tone-delta", String(lightestToneDelta));
+  elements.root.style.setProperty(
+    "--darkest-color",
+    oklchToHex(state.darkestLightness, baseOklch.C, baseOklch.H),
+  );
+  elements.root.style.setProperty(
+    "--lightest-color",
+    oklchToHex(state.lightestLightness, baseOklch.C, baseOklch.H),
+  );
   elements.root.style.setProperty("--hue-count", String(state.hueCount));
   elements.root.style.setProperty("--step-count", String(state.stepCount));
   elements.root.style.setProperty("--palette-gap", state.gap + "px");
@@ -576,6 +644,12 @@ function render() {
     elements.paletteBackground.value,
     getDefaultPaletteBackground(),
   );
+  const lightnessRange = normalizeLightnessRange(
+    elements.darkestLightness.value,
+    elements.lightestLightness.value,
+  );
+  state.darkestLightness = lightnessRange.darkestLightness;
+  state.lightestLightness = lightnessRange.lightestLightness;
   state.hueCount = normalizeRangeValue(
     elements.hueCount.value,
     LIMITS.hueCount,
@@ -599,11 +673,15 @@ function render() {
 function resetSettings() {
   state.baseColor = DEFAULTS.baseColor;
   state.paletteBackground = getDefaultPaletteBackground();
+  state.darkestLightness = DEFAULTS.darkestLightness;
+  state.lightestLightness = DEFAULTS.lightestLightness;
   state.hueCount = DEFAULTS.hueCount;
   state.stepCount = DEFAULTS.stepCount;
   state.gap = DEFAULTS.gap;
   elements.baseColor.value = DEFAULTS.baseColor.toLowerCase();
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
+  elements.darkestLightness.value = formatLightness(DEFAULTS.darkestLightness);
+  elements.lightestLightness.value = formatLightness(DEFAULTS.lightestLightness);
   elements.hueCount.value = String(DEFAULTS.hueCount);
   elements.stepCount.value = String(DEFAULTS.stepCount);
   elements.gap.value = String(DEFAULTS.gap);
@@ -616,6 +694,8 @@ function bindEvents() {
   [
     elements.baseColor,
     elements.paletteBackground,
+    elements.darkestLightness,
+    elements.lightestLightness,
     elements.hueCount,
     elements.stepCount,
     elements.gap,
