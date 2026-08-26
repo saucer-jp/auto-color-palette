@@ -5,14 +5,28 @@ const DEFAULTS = Object.freeze({
   gap: 8,
 });
 
+const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
+  light: "#F9FAF7",
+  dark: "#202522",
+});
+
 const LIMITS = Object.freeze({
   hueCount: { min: 2, max: 24 },
   stepCount: { min: 5, max: 30 },
   gap: { min: 0, max: 40 },
 });
 
+const STORAGE_KEY = "auto-color-palette-settings-v1";
+
+function getDefaultPaletteBackground() {
+  return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches
+    ? DEFAULT_PALETTE_BACKGROUNDS.dark
+    : DEFAULT_PALETTE_BACKGROUNDS.light;
+}
+
 const state = {
   baseColor: DEFAULTS.baseColor,
+  paletteBackground: getDefaultPaletteBackground(),
   hueCount: DEFAULTS.hueCount,
   stepCount: DEFAULTS.stepCount,
   gap: DEFAULTS.gap,
@@ -23,6 +37,9 @@ const elements = {
   baseColor: document.querySelector("#base-color"),
   baseColorValue: document.querySelector("#base-color-value"),
   baseColorCaption: document.querySelector("#base-color-caption"),
+  paletteBackground: document.querySelector("#palette-background"),
+  paletteBackgroundValue: document.querySelector("#palette-background-value"),
+  paletteBackgroundCaption: document.querySelector("#palette-background-caption"),
   hueCount: document.querySelector("#hue-count"),
   hueCountValue: document.querySelector("#hue-count-value"),
   stepCount: document.querySelector("#step-count"),
@@ -34,6 +51,7 @@ const elements = {
   compatibilityNote: document.querySelector("#compatibility-note"),
   paletteSummary: document.querySelector("#palette-summary"),
   paletteGrid: document.querySelector("#palette-grid"),
+  storageStatus: document.querySelector("#storage-status"),
   copyStatus: document.querySelector("#copy-status"),
   copyFallback: document.querySelector("#copy-fallback"),
   copyFallbackValue: document.querySelector("#copy-fallback-value"),
@@ -56,7 +74,7 @@ function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
 }
 
-function normalizeHex(value) {
+function normalizeHex(value, fallback = DEFAULTS.baseColor) {
   const normalized = String(value || "").trim().toUpperCase();
 
   if (/^#[0-9A-F]{6}$/.test(normalized)) {
@@ -74,7 +92,78 @@ function normalizeHex(value) {
     );
   }
 
-  return DEFAULTS.baseColor;
+  return fallback;
+}
+
+function normalizeRangeValue(value, limits, fallback) {
+  const number = Number(value);
+
+  return Number.isFinite(number)
+    ? Math.round(clamp(number, limits.min, limits.max))
+    : fallback;
+}
+
+function loadSettings() {
+  try {
+    const storedValue = window.localStorage.getItem(STORAGE_KEY);
+    if (!storedValue) {
+      return null;
+    }
+
+    const storedSettings = JSON.parse(storedValue);
+    if (!storedSettings || typeof storedSettings !== "object") {
+      return null;
+    }
+
+    return {
+      baseColor: normalizeHex(storedSettings.baseColor, DEFAULTS.baseColor),
+      paletteBackground: normalizeHex(
+        storedSettings.paletteBackground,
+        getDefaultPaletteBackground(),
+      ),
+      hueCount: normalizeRangeValue(
+        storedSettings.hueCount,
+        LIMITS.hueCount,
+        DEFAULTS.hueCount,
+      ),
+      stepCount: normalizeRangeValue(
+        storedSettings.stepCount,
+        LIMITS.stepCount,
+        DEFAULTS.stepCount,
+      ),
+      gap: normalizeRangeValue(storedSettings.gap, LIMITS.gap, DEFAULTS.gap),
+    };
+  } catch {
+    return null;
+  }
+}
+
+function setStorageStatus(message, kind) {
+  elements.storageStatus.textContent = message;
+
+  if (kind) {
+    elements.storageStatus.dataset.kind = kind;
+  } else {
+    delete elements.storageStatus.dataset.kind;
+  }
+}
+
+function saveSettings() {
+  const settings = {
+    version: 1,
+    baseColor: state.baseColor,
+    paletteBackground: state.paletteBackground,
+    hueCount: state.hueCount,
+    stepCount: state.stepCount,
+    gap: state.gap,
+  };
+
+  try {
+    window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    setStorageStatus("設定をこのブラウザに保存しました。", "success");
+  } catch {
+    setStorageStatus("この環境では設定を保存できません。", "error");
+  }
 }
 
 function hexToRgb(hex) {
@@ -213,6 +302,9 @@ function syncControls() {
   elements.baseColor.value = state.baseColor.toLowerCase();
   elements.baseColorValue.textContent = state.baseColor;
   elements.baseColorCaption.textContent = state.baseColor;
+  elements.paletteBackground.value = state.paletteBackground.toLowerCase();
+  elements.paletteBackgroundValue.textContent = state.paletteBackground;
+  elements.paletteBackgroundCaption.textContent = state.paletteBackground;
   elements.hueCount.value = String(state.hueCount);
   elements.hueCountValue.textContent = state.hueCount + " hues";
   elements.stepCount.value = String(state.stepCount);
@@ -447,6 +539,7 @@ function renderPalette() {
   const fragment = document.createDocumentFragment();
 
   elements.root.style.setProperty("--base-color", state.baseColor);
+  elements.root.style.setProperty("--palette-background", state.paletteBackground);
   elements.root.style.setProperty("--hue-count", String(state.hueCount));
   elements.root.style.setProperty("--step-count", String(state.stepCount));
   elements.root.style.setProperty("--palette-gap", state.gap + "px");
@@ -479,27 +572,38 @@ function renderPalette() {
 
 function render() {
   state.baseColor = normalizeHex(elements.baseColor.value);
-  state.hueCount = clamp(
-    Number(elements.hueCount.value),
-    LIMITS.hueCount.min,
-    LIMITS.hueCount.max,
+  state.paletteBackground = normalizeHex(
+    elements.paletteBackground.value,
+    getDefaultPaletteBackground(),
   );
-  state.stepCount = clamp(
-    Number(elements.stepCount.value),
-    LIMITS.stepCount.min,
-    LIMITS.stepCount.max,
+  state.hueCount = normalizeRangeValue(
+    elements.hueCount.value,
+    LIMITS.hueCount,
+    DEFAULTS.hueCount,
   );
-  state.gap = clamp(Number(elements.gap.value), LIMITS.gap.min, LIMITS.gap.max);
+  state.stepCount = normalizeRangeValue(
+    elements.stepCount.value,
+    LIMITS.stepCount,
+    DEFAULTS.stepCount,
+  );
+  state.gap = normalizeRangeValue(
+    elements.gap.value,
+    LIMITS.gap,
+    DEFAULTS.gap,
+  );
   syncControls();
+  saveSettings();
   renderPalette();
 }
 
 function resetSettings() {
   state.baseColor = DEFAULTS.baseColor;
+  state.paletteBackground = getDefaultPaletteBackground();
   state.hueCount = DEFAULTS.hueCount;
   state.stepCount = DEFAULTS.stepCount;
   state.gap = DEFAULTS.gap;
   elements.baseColor.value = DEFAULTS.baseColor.toLowerCase();
+  elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.hueCount.value = String(DEFAULTS.hueCount);
   elements.stepCount.value = String(DEFAULTS.stepCount);
   elements.gap.value = String(DEFAULTS.gap);
@@ -509,9 +613,13 @@ function resetSettings() {
 }
 
 function bindEvents() {
-  [elements.baseColor, elements.hueCount, elements.stepCount, elements.gap].forEach(
-    (input) => input.addEventListener("input", render),
-  );
+  [
+    elements.baseColor,
+    elements.paletteBackground,
+    elements.hueCount,
+    elements.stepCount,
+    elements.gap,
+  ].forEach((input) => input.addEventListener("input", render));
 
   elements.resetButton.addEventListener("click", resetSettings);
 
@@ -538,6 +646,12 @@ function bindEvents() {
   });
 }
 
+const storedSettings = loadSettings();
+if (storedSettings) {
+  Object.assign(state, storedSettings);
+}
+
 bindEvents();
 updateCompatibilityMessage();
+syncControls();
 render();

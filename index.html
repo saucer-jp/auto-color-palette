@@ -62,6 +62,22 @@
 
             <div class="control-field">
               <div class="field-label-row">
+                <label for="palette-background">Palette background</label>
+                <output id="palette-background-value" for="palette-background">
+                  #F9FAF7
+                </output>
+              </div>
+              <div class="color-control">
+                <input id="palette-background" type="color" value="#f9faf7" />
+                <div>
+                  <p class="control-value" id="palette-background-caption">#F9FAF7</p>
+                  <p class="control-help">パレットを囲む背景色</p>
+                </div>
+              </div>
+            </div>
+
+            <div class="control-field">
+              <div class="field-label-row">
                 <label for="hue-count">Hue count</label>
                 <output id="hue-count-value" for="hue-count">12 hues</output>
               </div>
@@ -128,6 +144,9 @@
           <div class="settings-footer">
             <p>
               各スウォッチをクリックすると、描画された色のHEX値をコピーします。
+            </p>
+            <p class="storage-status" id="storage-status">
+              設定はこのブラウザに保存されます。
             </p>
           </div>
         </aside>
