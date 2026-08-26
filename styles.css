@@ -59,6 +59,7 @@
     --palette-background: #f9faf7;
     --palette-gap: 8px;
     --hue-count: 12;
+    --palette-column-count: 13;
     --step-count: 12;
   }
 
@@ -520,7 +521,7 @@
 
   .palette-grid {
     display: grid;
-    grid-template-columns: repeat(var(--hue-count), minmax(0, 1fr));
+    grid-template-columns: repeat(var(--palette-column-count), minmax(0, 1fr));
     gap: var(--palette-gap);
     min-inline-size: 0;
     min-block-size: 100%;
@@ -593,7 +594,7 @@
       background-color: oklch(
         from var(--base-color)
         clamp(0, calc(l + var(--tone-delta)), 1)
-        c
+        var(--swatch-chroma)
         calc(h + var(--hue-offset))
       );
     }

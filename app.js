@@ -333,6 +333,24 @@ function getToneDelta(stepIndex, stepCount, baseLightness) {
   return darkestDelta + (lightestDelta - darkestDelta) * progress;
 }
 
+function getSwatchAriaLabel(swatch, hex) {
+  const columnLabel =
+    swatch.dataset.columnType === "grayscale"
+      ? "グレースケール"
+      : "色相 " + formatDegree(Number(swatch.dataset.hueOffset)) + "度";
+
+  return (
+    columnLabel +
+    "、ステップ " +
+    swatch.dataset.stepNumber +
+    " / " +
+    state.stepCount +
+    "、" +
+    hex +
+    "をコピー"
+  );
+}
+
 function formatDegree(degree) {
   return Math.round(degree * 10) / 10;
 }
@@ -373,13 +391,19 @@ function syncControls() {
   updateRangeProgress(elements.gap);
 }
 
-function createSwatch(baseOklch, hueOffset, hueIndex, stepIndex) {
+function createSwatch(
+  baseOklch,
+  hueOffset,
+  stepIndex,
+  chroma = baseOklch.C,
+  columnType = "hue",
+) {
   const toneDelta = getToneDelta(stepIndex, state.stepCount, baseOklch.L);
   const fallbackLightness = clamp(baseOklch.L + toneDelta, 0, 1);
   const fallbackHex = oklchToHex(
     fallbackLightness,
-    baseOklch.C,
-    baseOklch.H + hueOffset,
+    chroma,
+    columnType === "grayscale" ? 0 : baseOklch.H + hueOffset,
   );
   const swatch = document.createElement("button");
   const stepNumber = stepIndex + 1;
@@ -390,22 +414,13 @@ function createSwatch(baseOklch, hueOffset, hueIndex, stepIndex) {
   swatch.dataset.fallbackHex = fallbackHex;
   swatch.dataset.hueOffset = String(hueOffset);
   swatch.dataset.stepNumber = String(stepNumber);
+  swatch.dataset.columnType = columnType;
   swatch.style.setProperty("--hue-offset", String(hueOffset));
+  swatch.style.setProperty("--swatch-chroma", String(chroma));
   swatch.style.setProperty("--tone-delta", String(toneDelta));
   swatch.style.setProperty("--fallback-color", fallbackHex);
   swatch.style.setProperty("--swatch-foreground", getReadableTextColor(fallbackHex));
-  swatch.setAttribute(
-    "aria-label",
-    "色相 " +
-      formatDegree(hueOffset) +
-      "度、ステップ " +
-      stepNumber +
-      " / " +
-      state.stepCount +
-      "、" +
-      fallbackHex +
-      "をコピー",
-  );
+  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, fallbackHex));
 
   const meta = document.createElement("span");
   meta.className = "swatch-meta";
@@ -442,7 +457,31 @@ function createHueColumn(baseOklch, hueIndex) {
   stack.className = "swatch-stack";
 
   for (let stepIndex = 0; stepIndex < state.stepCount; stepIndex += 1) {
-    stack.append(createSwatch(baseOklch, hueOffset, hueIndex, stepIndex));
+    stack.append(createSwatch(baseOklch, hueOffset, stepIndex));
+  }
+
+  header.append(label);
+  column.append(header, stack);
+  return column;
+}
+
+function createGrayscaleColumn(baseOklch) {
+  const column = document.createElement("section");
+  const header = document.createElement("div");
+  const label = document.createElement("h3");
+  const stack = document.createElement("div");
+  const labelId = "grayscale-label";
+
+  column.className = "hue-column grayscale-column";
+  column.setAttribute("aria-labelledby", labelId);
+  header.className = "hue-header";
+  label.className = "hue-label";
+  label.id = labelId;
+  label.textContent = "GRAYSCALE";
+  stack.className = "swatch-stack";
+
+  for (let stepIndex = 0; stepIndex < state.stepCount; stepIndex += 1) {
+    stack.append(createSwatch(baseOklch, 0, stepIndex, 0, "grayscale"));
   }
 
   header.append(label);
@@ -480,24 +519,11 @@ function updateRenderedHexes() {
     const renderedHex = cssColorToHex(renderedColor);
     const hex = renderedHex || swatch.dataset.fallbackHex;
     const hexLabel = swatch.querySelector(".swatch-hex");
-    const hueOffset = Number(swatch.dataset.hueOffset);
-    const stepNumber = Number(swatch.dataset.stepNumber);
 
     swatch.dataset.hex = hex;
     swatch.style.setProperty("--swatch-foreground", getReadableTextColor(hex));
     hexLabel.textContent = hex;
-    swatch.setAttribute(
-      "aria-label",
-      "色相 " +
-        formatDegree(hueOffset) +
-        "度、ステップ " +
-        stepNumber +
-        " / " +
-        state.stepCount +
-        "、" +
-        hex +
-        "をコピー",
-    );
+    swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, hex));
   });
 }
 
@@ -609,21 +635,27 @@ function renderPalette() {
     oklchToHex(state.lightestLightness, baseOklch.C, baseOklch.H),
   );
   elements.root.style.setProperty("--hue-count", String(state.hueCount));
+  elements.root.style.setProperty(
+    "--palette-column-count",
+    String(state.hueCount + 1),
+  );
   elements.root.style.setProperty("--step-count", String(state.stepCount));
   elements.root.style.setProperty("--palette-gap", state.gap + "px");
   elements.paletteGrid.replaceChildren();
 
+  fragment.append(createGrayscaleColumn(baseOklch));
   for (let hueIndex = 0; hueIndex < state.hueCount; hueIndex += 1) {
     fragment.append(createHueColumn(baseOklch, hueIndex));
   }
 
   elements.paletteGrid.append(fragment);
   elements.paletteSummary.textContent =
+    "grayscale + " +
     state.hueCount +
     " hues × " +
     state.stepCount +
     " steps = " +
-    state.hueCount * state.stepCount +
+    (state.hueCount + 1) * state.stepCount +
     " colors";
 
   if (baseOklch.C < 0.015) {
