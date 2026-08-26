@@ -259,10 +259,6 @@ function createSwatch(baseOklch, hueOffset, hueIndex, stepIndex) {
       "をコピー",
   );
 
-  const stepLabel = document.createElement("span");
-  stepLabel.className = "swatch-step";
-  stepLabel.textContent = String(stepNumber).padStart(2, "0");
-
   const meta = document.createElement("span");
   meta.className = "swatch-meta";
 
@@ -276,7 +272,7 @@ function createSwatch(baseOklch, hueOffset, hueIndex, stepIndex) {
   actionLabel.textContent = "COPY";
 
   meta.append(hexLabel, actionLabel);
-  swatch.append(stepLabel, meta);
+  swatch.append(meta);
 
   return swatch;
 }

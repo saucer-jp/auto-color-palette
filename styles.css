@@ -598,16 +598,6 @@
     transform: scale(1.035);
   }
 
-  .swatch-step {
-    position: relative;
-    display: block;
-    color: inherit;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: clamp(0.52rem, 0.62vw, 0.7rem);
-    font-weight: 800;
-    opacity: 0.72;
-  }
-
   .swatch-meta {
     position: absolute;
     inset-block-end: 0.42rem;
