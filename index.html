@@ -14,19 +14,7 @@
   </head>
   <body>
     <main class="app-shell">
-      <header class="app-header">
-        <div class="header-copy">
-          <p class="eyebrow">COLOR SYSTEM BUILDER</p>
-          <h1>Auto Color Palette</h1>
-          <p class="header-description">
-            基準HUEとOKLCHのカーブから、彩度と明度のデザイントークンを組み立てます。
-          </p>
-        </div>
-        <div class="header-badge" aria-label="生成方式">
-          <span class="badge-dot" aria-hidden="true"></span>
-          <span id="render-mode">CSS OKLCH</span>
-        </div>
-      </header>
+      <h1 class="visually-hidden">Auto Color Palette</h1>
 
       <div class="workspace">
         <aside class="settings-panel" aria-label="パレット設定">
@@ -345,6 +333,10 @@
             <div>
               <p class="section-kicker">LIVE PREVIEW</p>
               <h2 id="preview-title">Palette field</h2>
+              <div class="render-mode-badge" aria-label="生成方式">
+                <span class="badge-dot" aria-hidden="true"></span>
+                <span id="render-mode">CSS OKLCH</span>
+              </div>
             </div>
             <div class="preview-summary">
               <p id="palette-summary" role="status" aria-live="polite">
