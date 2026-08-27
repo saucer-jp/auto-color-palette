@@ -42,6 +42,7 @@ const elements = {
   stepCountValue: document.querySelector("#step-count-value"),
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
+  showGamutWarnings: document.querySelector("#show-gamut-warnings"),
   resetButton: document.querySelector("#reset-button"),
   renderMode: document.querySelector("#render-mode"),
   compatibilityNote: document.querySelector("#compatibility-note"),
@@ -146,6 +147,7 @@ function saveSettings() {
     hueCount: state.hueCount,
     stepCount: state.stepCount,
     gap: state.gap,
+    showGamutWarnings: state.showGamutWarnings,
   };
 
   try {
@@ -272,6 +274,7 @@ function syncControls() {
   elements.stepCountValue.textContent = state.stepCount + " steps";
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
+  elements.showGamutWarnings.checked = state.showGamutWarnings;
 
   updateRangeProgress(elements.baseHue);
   updateRangeProgress(elements.chromaMin);
@@ -305,6 +308,7 @@ function readSettingsFromControls(sourceElement) {
       hueCount: Number(elements.hueCount.value),
       stepCount: Number(elements.stepCount.value),
       gap: Number(elements.gap.value),
+      showGamutWarnings: elements.showGamutWarnings.checked,
     },
     getDefaultPaletteBackground(),
   );
@@ -370,7 +374,7 @@ function createSwatch(swatchData) {
     getReadableTextColor(swatchData.hex),
   );
 
-  if (swatchData.isOutOfSrgbGamut) {
+  if (swatchData.isOutOfSrgbGamut && state.showGamutWarnings) {
     const warning = document.createElement("span");
     warning.className = "swatch-alert";
     warning.setAttribute("aria-hidden", "true");
@@ -787,6 +791,9 @@ function bindEvents() {
   bindCurveEditor("chroma");
   bindCurveEditor("lightness");
   elements.resetButton.addEventListener("click", resetSettings);
+  elements.showGamutWarnings.addEventListener("change", () => {
+    renderFromControls(elements.showGamutWarnings);
+  });
 
   elements.paletteGrid.addEventListener("click", (event) => {
     const swatch = event.target.closest('[data-role="swatch"]');

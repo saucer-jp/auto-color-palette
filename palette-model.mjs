@@ -15,6 +15,7 @@ export const DEFAULTS = Object.freeze({
   hueCount: 12,
   stepCount: 12,
   gap: 8,
+  showGamutWarnings: true,
 });
 
 export const LIMITS = Object.freeze({
@@ -49,6 +50,10 @@ function normalizeRangeValue(value, limits, fallback) {
   return Math.round(
     clamp(finiteNumber(value, fallback), limits.min, limits.max),
   );
+}
+
+function normalizeBoolean(value, fallback) {
+  return typeof value === "boolean" ? value : fallback;
 }
 
 function normalizeDecimal(value, limits, fallback) {
@@ -145,6 +150,7 @@ export function createDefaultSettings(paletteBackground = "#F9FAF7") {
     hueCount: DEFAULTS.hueCount,
     stepCount: DEFAULTS.stepCount,
     gap: DEFAULTS.gap,
+    showGamutWarnings: DEFAULTS.showGamutWarnings,
   };
 }
 
@@ -165,6 +171,10 @@ function normalizeGeneralSettings(source, defaults) {
       defaults.stepCount,
     ),
     gap: normalizeRangeValue(source.gap, LIMITS.gap, defaults.gap),
+    showGamutWarnings: normalizeBoolean(
+      source.showGamutWarnings,
+      defaults.showGamutWarnings,
+    ),
   };
 }
 

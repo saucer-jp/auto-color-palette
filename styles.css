@@ -237,7 +237,8 @@
 
   .reset-button:focus-visible,
   .range-input:focus-visible,
-  .color-control input:focus-visible {
+  .color-control input:focus-visible,
+  .checkbox-control input:focus-visible {
     outline: 0.16rem solid var(--accent);
     outline-offset: 0.18rem;
   }
@@ -251,6 +252,26 @@
   .control-field {
     display: grid;
     gap: 0.7rem;
+  }
+
+  .checkbox-control {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.6rem;
+    min-block-size: 1.75rem;
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.78rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+  }
+
+  .checkbox-control input[type="checkbox"] {
+    flex: 0 0 auto;
+    inline-size: 1.1rem;
+    block-size: 1.1rem;
+    margin: 0;
+    accent-color: var(--accent);
   }
 
   .field-label-row {
@@ -685,8 +706,8 @@
     z-index: 1;
     inset-block-start: 0.5rem;
     inset-inline-end: 0.5rem;
-    inline-size: 0.5rem;
-    block-size: 0.5rem;
+    inline-size: 0.4rem;
+    block-size: 0.4rem;
     border-radius: 50%;
     background: var(--swatch-foreground, #fff);
     pointer-events: none;

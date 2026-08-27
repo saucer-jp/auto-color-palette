@@ -62,6 +62,19 @@ test("palette generation uses absolute hues and grayscale chroma zero", () => {
   assert.ok(palette.columns[0].swatches.every((swatch) => swatch.C === 0));
 });
 
+test("gamut warning visibility defaults to enabled and accepts explicit booleans", () => {
+  assert.equal(createDefaultSettings().showGamutWarnings, true);
+  assert.equal(
+    normalizeSettings({ version: 3, baseHue: 180 }).showGamutWarnings,
+    true,
+  );
+  assert.equal(
+    normalizeSettings({ version: 3, baseHue: 180, showGamutWarnings: false })
+      .showGamutWarnings,
+    false,
+  );
+});
+
 test("hue columns keep precise equal spacing internally", () => {
   const settings = {
     ...createDefaultSettings(),
