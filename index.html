@@ -70,7 +70,14 @@
             <div class="control-field">
               <label class="checkbox-control" for="show-gamut-warnings">
                 <input id="show-gamut-warnings" type="checkbox" checked />
-                <span>Show gamut warning dots</span>
+                <span>
+                  Show gamut warning dots
+                  <span
+                    class="gamut-warning-count"
+                    id="gamut-warning-count"
+                    aria-live="polite"
+                  >(0)</span>
+                </span>
               </label>
               <p class="control-help">色域外スウォッチの警告ドットを表示</p>
             </div>
@@ -417,24 +424,7 @@
           </div>
         </aside>
 
-        <section class="preview-panel" aria-labelledby="preview-title">
-          <div class="preview-toolbar">
-            <div>
-              <p class="section-kicker">LIVE PREVIEW</p>
-              <h2 id="preview-title">Palette field</h2>
-              <div class="render-mode-badge" aria-label="生成方式">
-                <span class="badge-dot" aria-hidden="true"></span>
-                <span id="render-mode">CSS OKLCH</span>
-              </div>
-            </div>
-            <div class="preview-summary">
-              <p id="palette-summary" role="status" aria-live="polite">
-                grayscale + 12 hues × 12 steps = 156 colors
-              </p>
-              <p class="preview-hint">クリックでHEXをコピー</p>
-            </div>
-          </div>
-
+        <section class="preview-panel" aria-label="カラーパレットプレビュー">
           <div
             class="compatibility-note"
             id="compatibility-note"
@@ -442,8 +432,6 @@
             aria-live="polite"
             hidden
           ></div>
-
-          <p class="gamut-summary" id="gamut-summary" role="status" aria-live="polite" hidden></p>
 
           <div class="palette-frame">
             <div

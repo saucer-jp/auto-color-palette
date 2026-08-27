@@ -44,6 +44,7 @@ const elements = {
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
+  gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
   ],
@@ -56,10 +57,7 @@ const elements = {
   lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
   lightnessCurveHelp: document.querySelector("#lightness-curve-help"),
   resetButton: document.querySelector("#reset-button"),
-  renderMode: document.querySelector("#render-mode"),
   compatibilityNote: document.querySelector("#compatibility-note"),
-  gamutSummary: document.querySelector("#gamut-summary"),
-  paletteSummary: document.querySelector("#palette-summary"),
   paletteGrid: document.querySelector("#palette-grid"),
   storageStatus: document.querySelector("#storage-status"),
   toast: document.querySelector("#toast"),
@@ -580,27 +578,17 @@ function updateRenderedHexes() {
 
 function updateCompatibilityMessage() {
   if (supportsOklch) {
-    elements.renderMode.textContent = "CSS OKLCH";
     elements.compatibilityNote.hidden = true;
     return;
   }
 
-  elements.renderMode.textContent = "JS color fallback";
   elements.compatibilityNote.textContent =
     "このブラウザではCSS OKLCHが使えないため、同じトークン計算をJavaScriptで表示しています。";
   elements.compatibilityNote.hidden = false;
 }
 
-function updateGamutSummary(gamutCount) {
-  if (gamutCount === 0) {
-    elements.gamutSummary.hidden = true;
-    elements.gamutSummary.textContent = "";
-    return;
-  }
-
-  elements.gamutSummary.hidden = false;
-  elements.gamutSummary.textContent =
-    gamutCount + "色がsRGB色域外のためRGBにクリップされています。";
+function updateGamutWarningCount(gamutCount) {
+  elements.gamutWarningCount.textContent = "(" + gamutCount + ")";
 }
 
 function getCurvePreviewColors() {
@@ -641,15 +629,7 @@ function renderPalette() {
   });
 
   elements.paletteGrid.append(fragment);
-  elements.paletteSummary.textContent =
-    "grayscale + " +
-    state.hueCount +
-    " hues × " +
-    state.stepCount +
-    " steps = " +
-    palette.totalColors +
-    " colors";
-  updateGamutSummary(gamutCount);
+  updateGamutWarningCount(gamutCount);
 
   window.cancelAnimationFrame(renderFrame);
   renderFrame = window.requestAnimationFrame(updateRenderedHexes);
