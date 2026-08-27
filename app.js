@@ -374,7 +374,6 @@ function createSwatch(swatchData) {
     const warning = document.createElement("span");
     warning.className = "swatch-alert";
     warning.setAttribute("aria-hidden", "true");
-    warning.textContent = "⚠";
     swatch.append(warning);
   }
 

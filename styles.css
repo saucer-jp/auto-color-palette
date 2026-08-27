@@ -683,20 +683,20 @@
   .swatch-alert {
     position: absolute;
     z-index: 1;
-    inset-block-start: 0.35rem;
-    inset-inline-end: 0.4rem;
-    display: grid;
-    place-items: center;
-    inline-size: 1.1rem;
-    block-size: 1.1rem;
-    border: 1px solid currentColor;
+    inset-block-start: 0.5rem;
+    inset-inline-end: 0.5rem;
+    inline-size: 0.5rem;
+    block-size: 0.5rem;
     border-radius: 50%;
-    background: rgb(0 0 0 / 0.22);
-    color: inherit;
-    font-size: 0.72rem;
-    font-weight: 850;
-    line-height: 1;
+    background: var(--swatch-foreground, #fff);
     pointer-events: none;
+  }
+
+  @supports (mix-blend-mode: difference) {
+    .swatch-alert {
+      background: #fff;
+      mix-blend-mode: difference;
+    }
   }
 
   .swatch:hover:not(:disabled) {
@@ -931,9 +931,8 @@
     }
 
     .swatch-alert {
-      border-color: CanvasText;
-      background: Canvas;
-      color: CanvasText;
+      background: CanvasText;
+      mix-blend-mode: normal;
     }
   }
 }
