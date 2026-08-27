@@ -364,19 +364,31 @@
             ></div>
           </div>
 
-          <div class="feedback-area">
-            <p class="copy-status" id="copy-status" role="status" aria-live="polite"></p>
-            <div class="copy-fallback" id="copy-fallback" hidden>
-              <label for="copy-fallback-value">手動でコピーする値</label>
-              <div class="copy-fallback-row">
-                <input id="copy-fallback-value" type="text" readonly />
-                <button id="retry-copy" type="button">再試行</button>
-              </div>
-            </div>
-          </div>
         </section>
       </div>
     </main>
+
+    <div class="toast-container" aria-live="polite">
+      <div
+        class="toast"
+        id="toast"
+        popover="manual"
+        role="status"
+        aria-live="polite"
+        aria-atomic="true"
+      >
+        <span id="toast-message"></span>
+        <button
+          class="toast-close"
+          type="button"
+          aria-label="通知を閉じる"
+          popovertarget="toast"
+          popovertargetaction="hide"
+        >
+          ×
+        </button>
+      </div>
+    </div>
 
     <noscript>
       <p class="noscript-message">

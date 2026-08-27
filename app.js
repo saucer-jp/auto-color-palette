@@ -49,10 +49,9 @@ const elements = {
   paletteSummary: document.querySelector("#palette-summary"),
   paletteGrid: document.querySelector("#palette-grid"),
   storageStatus: document.querySelector("#storage-status"),
-  copyStatus: document.querySelector("#copy-status"),
-  copyFallback: document.querySelector("#copy-fallback"),
-  copyFallbackValue: document.querySelector("#copy-fallback-value"),
-  retryCopy: document.querySelector("#retry-copy"),
+  toast: document.querySelector("#toast"),
+  toastMessage: document.querySelector("#toast-message"),
+  toastClose: document.querySelector(".toast-close"),
 };
 
 const curveElements = {
@@ -88,9 +87,8 @@ const colorCanvas = document.createElement("canvas");
 colorCanvas.width = 1;
 colorCanvas.height = 1;
 const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
-let copyFeedbackTimer;
+let toastTimer;
 let renderFrame;
-let lastFallbackTarget = null;
 
 function formatDegree(degree) {
   return String(Math.round(Number(degree) * 10) / 10);
@@ -568,31 +566,45 @@ function renderPalette() {
   renderFrame = window.requestAnimationFrame(updateRenderedHexes);
 }
 
-function showCopyStatus(message, kind) {
-  window.clearTimeout(copyFeedbackTimer);
-  elements.copyStatus.textContent = message;
-  if (kind) {
-    elements.copyStatus.dataset.kind = kind;
-  } else {
-    delete elements.copyStatus.dataset.kind;
+function hideToast() {
+  window.clearTimeout(toastTimer);
+
+  if (typeof elements.toast.hidePopover === "function") {
+    if (elements.toast.matches(":popover-open")) {
+      elements.toast.hidePopover();
+    }
   }
-  copyFeedbackTimer = window.setTimeout(() => {
-    elements.copyStatus.textContent = "";
-    delete elements.copyStatus.dataset.kind;
-  }, 2800);
+
+  elements.toast.classList.remove("is-visible");
+  delete elements.toast.dataset.kind;
 }
 
-function showCopyFallback(hex) {
-  lastFallbackTarget = hex;
-  elements.copyFallbackValue.value = hex;
-  elements.copyFallback.hidden = false;
-  elements.copyFallbackValue.focus();
-  elements.copyFallbackValue.select();
-}
+function showToast(message, kind) {
+  window.clearTimeout(toastTimer);
+  elements.toastMessage.textContent = message;
 
-function hideCopyFallback() {
-  lastFallbackTarget = null;
-  elements.copyFallback.hidden = true;
+  if (kind) {
+    elements.toast.dataset.kind = kind;
+  } else {
+    delete elements.toast.dataset.kind;
+  }
+
+  elements.toast.setAttribute("role", kind === "error" ? "alert" : "status");
+  elements.toast.setAttribute(
+    "aria-live",
+    kind === "error" ? "assertive" : "polite",
+  );
+
+  if (typeof elements.toast.showPopover === "function") {
+    if (elements.toast.matches(":popover-open")) {
+      elements.toast.hidePopover();
+    }
+    elements.toast.showPopover();
+  } else {
+    elements.toast.classList.add("is-visible");
+  }
+
+  toastTimer = window.setTimeout(hideToast, 2800);
 }
 
 function fallbackCopy(text) {
@@ -633,11 +645,9 @@ async function copySwatch(swatch) {
 
   try {
     await writeClipboard(hex);
-    showCopyStatus(hex + " をコピーしました", "success");
-    hideCopyFallback();
+    showToast(hex + " をコピーしました", "success");
   } catch {
-    showCopyStatus(hex + " をコピーできませんでした。", "error");
-    showCopyFallback(hex);
+    showToast(hex + " をコピーできませんでした。", "error");
   }
 
   swatch.classList.add("is-copied");
@@ -756,11 +766,10 @@ function bindCurveEditor(curveType) {
 
 function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
-  hideCopyFallback();
   syncControls();
   renderPalette();
   saveSettings();
-  showCopyStatus("設定を初期値に戻しました", "success");
+  showToast("設定を初期値に戻しました", "success");
 }
 
 function bindEvents() {
@@ -787,20 +796,7 @@ function bindEvents() {
     }
   });
 
-  elements.retryCopy.addEventListener("click", () => {
-    if (!lastFallbackTarget) {
-      return;
-    }
-    void writeClipboard(lastFallbackTarget)
-      .then(() => {
-        showCopyStatus(lastFallbackTarget + " をコピーしました", "success");
-        hideCopyFallback();
-      })
-      .catch(() => {
-        showCopyStatus(lastFallbackTarget + " をコピーできませんでした。", "error");
-        showCopyFallback(lastFallbackTarget);
-      });
-  });
+  elements.toastClose.addEventListener("click", hideToast);
 }
 
 const storedSettings = loadSettings();

@@ -198,8 +198,7 @@
 
   .panel-heading,
   .field-label-row,
-  .preview-toolbar,
-  .copy-fallback-row {
+  .preview-toolbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -237,8 +236,6 @@
   }
 
   .reset-button:focus-visible,
-  .retry-copy:focus-visible,
-  .copy-fallback-value:focus-visible,
   .range-input:focus-visible,
   .color-control input:focus-visible {
     outline: 0.16rem solid var(--accent);
@@ -545,7 +542,7 @@
 
   .preview-panel {
     display: grid;
-    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr);
     min-inline-size: 0;
     min-block-size: 0;
     overflow: clip;
@@ -765,63 +762,84 @@
     opacity: 0.76;
   }
 
-  .feedback-area {
-    grid-row: 5;
-    min-block-size: 2.2rem;
-    padding-block-start: 1rem;
+  .toast-container {
+    position: fixed;
+    z-index: 10;
+    inset-block-end: 1rem;
+    inset-inline-end: 1rem;
+    pointer-events: none;
   }
 
-  .copy-status {
-    min-block-size: 1.2rem;
-    color: var(--success);
-    font-size: 0.76rem;
-    font-weight: 700;
-  }
-
-  .copy-status[data-kind="error"] {
-    color: var(--danger);
-  }
-
-  .copy-fallback {
-    display: grid;
-    gap: 0.45rem;
-    margin-block-start: 0.6rem;
-  }
-
-  .copy-fallback[hidden] {
+  .toast {
+    position: fixed;
     display: none;
-  }
-
-  .copy-fallback label {
-    color: var(--muted);
-    font-size: 0.7rem;
-  }
-
-  .copy-fallback-row {
-    justify-content: start;
-  }
-
-  .copy-fallback-value {
-    min-inline-size: 9rem;
-    padding-block: 0.45rem;
-    padding-inline: 0.6rem;
-    border: 0;
-    border-radius: 0.45rem;
+    align-items: center;
+    gap: 0.8rem;
+    inline-size: min(26rem, calc(100vw - 2rem));
+    max-inline-size: 100%;
+    inset-block-start: auto;
+    inset-block-end: 1rem;
+    inset-inline-start: auto;
+    inset-inline-end: 1rem;
+    margin: 0;
+    padding-block: 0.75rem;
+    padding-inline: 1rem 0.7rem;
+    border: 1px solid var(--soft);
+    border-radius: 0.75rem;
     background: var(--surface);
+    box-shadow: 0 0.9rem 2.5rem rgb(14 27 20 / 0.2);
     color: var(--text);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.78rem;
+    font-weight: 700;
+    opacity: 0;
+    pointer-events: auto;
+    transform: translateY(0.5rem);
+    transition:
+      opacity 180ms ease,
+      transform 180ms ease,
+      display 180ms allow-discrete;
   }
 
-  .retry-copy {
-    padding-block: 0.45rem;
-    padding-inline: 0.75rem;
+  .toast:is(:popover-open, .is-visible) {
+    display: flex;
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .toast[data-kind="error"] {
+    border-color: color-mix(in srgb, var(--danger) 45%, var(--soft));
+  }
+
+  .toast-close {
+    display: grid;
+    flex: 0 0 auto;
+    place-items: center;
+    inline-size: 1.6rem;
+    block-size: 1.6rem;
+    padding: 0;
     border: 0;
-    border-radius: 0.45rem;
-    background: var(--accent);
-    color: #fff;
-    font-size: 0.72rem;
-    font-weight: 750;
+    border-radius: 50%;
+    background: transparent;
+    color: var(--muted);
+    font-size: 1.1rem;
+    line-height: 1;
+  }
+
+  .toast-close:hover {
+    background: var(--soft);
+    color: var(--text);
+  }
+
+  .toast-close:focus-visible {
+    outline: 0.16rem solid var(--accent);
+    outline-offset: 0.18rem;
+  }
+
+  @starting-style {
+    .toast:is(:popover-open, .is-visible) {
+      opacity: 0;
+      transform: translateY(0.5rem);
+    }
   }
 
   .noscript-message {
@@ -910,10 +928,6 @@
   @media (forced-colors: active) {
     .swatch:focus-visible {
       outline-color: Highlight;
-    }
-
-    .copy-status {
-      color: CanvasText;
     }
 
     .swatch-alert {
