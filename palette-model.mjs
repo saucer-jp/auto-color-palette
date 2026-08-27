@@ -1,3 +1,8 @@
+export const LIGHTNESS_CURVE_MODES = Object.freeze({
+  CUSTOM: "custom",
+  S: "s",
+});
+
 export const DEFAULTS = Object.freeze({
   baseHue: 259.8,
   chromaMin: 0,
@@ -12,6 +17,12 @@ export const DEFAULTS = Object.freeze({
     middle: 0.623,
     end: 0.983,
   }),
+  lightnessCurveMode: LIGHTNESS_CURVE_MODES.CUSTOM,
+  lightnessSCurve: Object.freeze({
+    start: 0.263,
+    end: 0.983,
+    amount: 0.7,
+  }),
   hueCount: 12,
   stepCount: 12,
   gap: 8,
@@ -22,6 +33,7 @@ export const LIMITS = Object.freeze({
   baseHue: { min: 0, max: 359.9 },
   chroma: { min: 0, max: 0.4 },
   lightness: { min: 0, max: 1 },
+  lightnessSCurveAmount: { min: -1, max: 1 },
   hueCount: { min: 2, max: 24 },
   stepCount: { min: 5, max: 30 },
   gap: { min: 0, max: 40 },
@@ -118,6 +130,30 @@ function normalizeLightnessCurve(curve, fallback) {
   };
 }
 
+function normalizeLightnessCurveMode(value, fallback) {
+  return value === LIGHTNESS_CURVE_MODES.S
+    ? LIGHTNESS_CURVE_MODES.S
+    : fallback;
+}
+
+function normalizeLightnessSCurve(curve, fallback) {
+  const source = curve && typeof curve === "object" ? curve : {};
+  const values = [
+    normalizeDecimal(source.start, LIMITS.lightness, fallback.start),
+    normalizeDecimal(source.end, LIMITS.lightness, fallback.end),
+  ].sort((left, right) => left - right);
+
+  return {
+    start: values[0],
+    end: values[1],
+    amount: normalizeDecimal(
+      source.amount,
+      LIMITS.lightnessSCurveAmount,
+      fallback.amount,
+    ),
+  };
+}
+
 function normalizeChromaRange(minValue, maxValue) {
   const min = normalizeDecimal(minValue, LIMITS.chroma, DEFAULTS.chromaMin);
   const max = normalizeDecimal(maxValue, LIMITS.chroma, DEFAULTS.chromaMax);
@@ -140,12 +176,14 @@ function normalizeChromaCurve(curve, fallback, min, max) {
 
 export function createDefaultSettings(paletteBackground = "#F9FAF7") {
   return {
-    version: 3,
+    version: 4,
     baseHue: DEFAULTS.baseHue,
     chromaMin: DEFAULTS.chromaMin,
     chromaMax: DEFAULTS.chromaMax,
     chromaCurve: { ...DEFAULTS.chromaCurve },
     lightnessCurve: { ...DEFAULTS.lightnessCurve },
+    lightnessCurveMode: DEFAULTS.lightnessCurveMode,
+    lightnessSCurve: { ...DEFAULTS.lightnessSCurve },
     paletteBackground: normalizeHex(paletteBackground),
     hueCount: DEFAULTS.hueCount,
     stepCount: DEFAULTS.stepCount,
@@ -203,9 +241,18 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
   const lightnessCurve = isLegacy
     ? { ...defaults.lightnessCurve }
     : normalizeLightnessCurve(source.lightnessCurve, defaults.lightnessCurve);
+  const lightnessCurveMode = isLegacy
+    ? defaults.lightnessCurveMode
+    : normalizeLightnessCurveMode(
+        source.lightnessCurveMode,
+        defaults.lightnessCurveMode,
+      );
+  const lightnessSCurve = isLegacy
+    ? { ...defaults.lightnessSCurve }
+    : normalizeLightnessSCurve(source.lightnessSCurve, defaults.lightnessSCurve);
 
   return {
-    version: 3,
+    version: 4,
     baseHue: isLegacy
       ? legacyBaseHue(source)
       : normalizeHue(source.baseHue, defaults.baseHue),
@@ -213,6 +260,8 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
     chromaMax: range.max,
     chromaCurve,
     lightnessCurve,
+    lightnessCurveMode,
+    lightnessSCurve,
     ...normalizeGeneralSettings(source, defaults),
   };
 }
@@ -457,7 +506,46 @@ export function evaluateCurve(curve, progress) {
   );
 }
 
-export function evaluateLightness(curve, progress) {
+export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
+  const source = curve && typeof curve === "object" ? curve : {};
+  const start = clamp(
+    finiteNumber(source.start, DEFAULTS.lightnessSCurve.start),
+    LIMITS.lightness.min,
+    LIMITS.lightness.max,
+  );
+  const end = clamp(
+    finiteNumber(source.end, DEFAULTS.lightnessSCurve.end),
+    LIMITS.lightness.min,
+    LIMITS.lightness.max,
+  );
+  const amount = clamp(
+    finiteNumber(source.amount, DEFAULTS.lightnessSCurve.amount),
+    LIMITS.lightnessSCurveAmount.min,
+    LIMITS.lightnessSCurveAmount.max,
+  );
+  const t = clamp(finiteNumber(progress, 0), 0, 1);
+  const smooth = t * t * (3 - 2 * t);
+  const curveProgress = t + amount * (smooth - t);
+  const lower = Math.min(start, end);
+  const upper = Math.max(start, end);
+
+  return clamp(
+    lower + (upper - lower) * curveProgress,
+    LIMITS.lightness.min,
+    LIMITS.lightness.max,
+  );
+}
+
+export function evaluateLightness(
+  curve,
+  progress,
+  mode = LIGHTNESS_CURVE_MODES.CUSTOM,
+  sCurve = DEFAULTS.lightnessSCurve,
+) {
+  if (mode === LIGHTNESS_CURVE_MODES.S) {
+    return evaluateSCurve(sCurve, progress);
+  }
+
   return clamp(evaluateCurve(curve, progress), 0, 1);
 }
 
@@ -483,7 +571,12 @@ export function generatePalette(settings) {
 
   for (let stepIndex = 0; stepIndex < settings.stepCount; stepIndex += 1) {
     const progress = stepIndex / Math.max(settings.stepCount - 1, 1);
-    const L = evaluateLightness(settings.lightnessCurve, progress);
+    const L = evaluateLightness(
+      settings.lightnessCurve,
+      progress,
+      settings.lightnessCurveMode,
+      settings.lightnessSCurve,
+    );
     const C = evaluateChroma(
       settings.chromaCurve,
       settings.chromaMin,
@@ -517,7 +610,12 @@ export function generatePalette(settings) {
 
     for (let stepIndex = 0; stepIndex < settings.stepCount; stepIndex += 1) {
       const progress = stepIndex / Math.max(settings.stepCount - 1, 1);
-      const L = evaluateLightness(settings.lightnessCurve, progress);
+      const L = evaluateLightness(
+        settings.lightnessCurve,
+        progress,
+        settings.lightnessCurveMode,
+        settings.lightnessSCurve,
+      );
       const C = evaluateChroma(
         settings.chromaCurve,
         settings.chromaMin,

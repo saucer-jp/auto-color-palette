@@ -388,6 +388,58 @@
     grid-column: 1 / -1;
   }
 
+  .curve-mode-control {
+    display: grid;
+    gap: 0.45rem;
+  }
+
+  .curve-mode-label {
+    color: var(--muted);
+    font-size: 0.68rem;
+    font-weight: 750;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+  }
+
+  .curve-mode-options {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.5rem;
+  }
+
+  .curve-mode-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-block-size: 2.15rem;
+    padding-block: 0.42rem;
+    padding-inline: 0.65rem;
+    border: 1px solid var(--soft);
+    border-radius: 0.6rem;
+    background: var(--surface-raised);
+    color: var(--text);
+    cursor: pointer;
+    font-size: 0.72rem;
+    font-weight: 700;
+  }
+
+  .curve-mode-option:focus-within {
+    outline: 0.16rem solid var(--accent);
+    outline-offset: 0.12rem;
+  }
+
+  .curve-mode-option input[type="radio"] {
+    flex: 0 0 auto;
+    inline-size: 1rem;
+    block-size: 1rem;
+    margin: 0;
+    accent-color: var(--accent);
+  }
+
+  .curve-mode-option input[type="radio"]:checked + span {
+    color: var(--accent);
+  }
+
   .curve-editor {
     position: relative;
     min-block-size: 10rem;
@@ -454,6 +506,10 @@
       box-shadow 120ms ease;
   }
 
+  .curve-handle[hidden] {
+    display: none;
+  }
+
   .curve-handle:hover,
   .curve-handle.is-dragging {
     box-shadow: 0 0.22rem 0.7rem rgb(14 27 20 / 0.32);
@@ -490,6 +546,11 @@
   .curve-bound {
     display: grid;
     gap: 0.5rem;
+  }
+
+  .curve-s-controls {
+    display: grid;
+    gap: 0.8rem;
   }
 
   .curve-bound .field-label-row label {

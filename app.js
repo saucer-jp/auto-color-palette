@@ -1,5 +1,6 @@
 import {
   LIMITS,
+  LIGHTNESS_CURVE_MODES,
   clamp,
   createDefaultSettings,
   evaluateChroma,
@@ -43,6 +44,17 @@ const elements = {
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
+  lightnessCurveModes: [
+    ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
+  ],
+  lightnessSCurveControls: document.querySelector("#lightness-s-curve-controls"),
+  lightnessSCurveStart: document.querySelector("#lightness-s-start"),
+  lightnessSCurveStartValue: document.querySelector("#lightness-s-start-value"),
+  lightnessSCurveEnd: document.querySelector("#lightness-s-end"),
+  lightnessSCurveEndValue: document.querySelector("#lightness-s-end-value"),
+  lightnessSCurveAmount: document.querySelector("#lightness-s-amount"),
+  lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
+  lightnessCurveHelp: document.querySelector("#lightness-curve-help"),
   resetButton: document.querySelector("#reset-button"),
   renderMode: document.querySelector("#render-mode"),
   compatibilityNote: document.querySelector("#compatibility-note"),
@@ -99,6 +111,11 @@ function formatCurveValue(value) {
   return Number(value).toFixed(3);
 }
 
+function formatSCurveAmount(value) {
+  const percentage = Math.round(Number(value) * 100);
+  return (percentage > 0 ? "+" : "") + percentage + "%";
+}
+
 function formatCssNumber(value) {
   return String(Number(Number(value).toFixed(6)));
 }
@@ -137,12 +154,14 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    version: 3,
+    version: 4,
     baseHue: state.baseHue,
     chromaMin: state.chromaMin,
     chromaMax: state.chromaMax,
     chromaCurve: { ...state.chromaCurve },
     lightnessCurve: { ...state.lightnessCurve },
+    lightnessCurveMode: state.lightnessCurveMode,
+    lightnessSCurve: { ...state.lightnessSCurve },
     paletteBackground: state.paletteBackground,
     hueCount: state.hueCount,
     stepCount: state.stepCount,
@@ -213,14 +232,26 @@ function getCurveSampleValue(curveType, progress) {
 
   return curveType === "chroma"
     ? evaluateChroma(curve, state.chromaMin, state.chromaMax, progress)
-    : evaluateLightness(curve, progress);
+    : evaluateLightness(
+        curve,
+        progress,
+        state.lightnessCurveMode,
+        state.lightnessSCurve,
+      );
 }
 
 function updateCurveGraph(curveType) {
   const controls = curveElements[curveType];
   const curve = state[getCurveKey(curveType)];
+  const isLightnessSCurve =
+    curveType === "lightness" &&
+    state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
   const sampleCount = 40;
   const pathData = [];
+
+  controls.editor.dataset.mode = isLightnessSCurve
+    ? LIGHTNESS_CURVE_MODES.S
+    : LIGHTNESS_CURVE_MODES.CUSTOM;
 
   for (let index = 0; index <= sampleCount; index += 1) {
     const progress = index / sampleCount;
@@ -234,11 +265,15 @@ function updateCurveGraph(curveType) {
 
   controls.handles.forEach((handle) => {
     const point = handle.dataset.point;
-    const value = curve[point];
+    const pointProgress = point === "start" ? 0 : point === "middle" ? 0.5 : 1;
+    const value = isLightnessSCurve
+      ? getCurveSampleValue(curveType, pointProgress)
+      : curve[point];
     const x = point === "start" ? 0 : point === "middle" ? 50 : 100;
     const y = curveValueToY(curveType, value) * 100;
     const range = getCurveRange(curveType);
 
+    handle.hidden = isLightnessSCurve;
     handle.style.left = x + "%";
     handle.style.top = y + "%";
     handle.setAttribute("aria-label", getCurveLabel(curveType, point));
@@ -256,6 +291,37 @@ function updateCurveGraph(curveType) {
     );
     controls.outputs[point].textContent = formatCurveValue(value);
   });
+}
+
+function syncLightnessCurveControls() {
+  const mode = state.lightnessCurveMode;
+
+  elements.lightnessCurveModes.forEach((input) => {
+    input.checked = input.value === mode;
+  });
+  elements.lightnessSCurveControls.hidden =
+    mode !== LIGHTNESS_CURVE_MODES.S;
+  elements.lightnessSCurveStart.value = formatCurveValue(
+    state.lightnessSCurve.start,
+  );
+  elements.lightnessSCurveStartValue.textContent = formatCurveValue(
+    state.lightnessSCurve.start,
+  );
+  elements.lightnessSCurveEnd.value = formatCurveValue(state.lightnessSCurve.end);
+  elements.lightnessSCurveEndValue.textContent = formatCurveValue(
+    state.lightnessSCurve.end,
+  );
+  elements.lightnessSCurveAmount.value = String(state.lightnessSCurve.amount);
+  elements.lightnessSCurveAmountValue.textContent = formatSCurveAmount(
+    state.lightnessSCurve.amount,
+  );
+  elements.lightnessCurveHelp.textContent =
+    mode === LIGHTNESS_CURVE_MODES.S
+      ? "ステップ方向のOKLCH L（0〜1）。範囲とS字の強さを調整できます。"
+      : "ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。";
+  updateRangeProgress(elements.lightnessSCurveStart);
+  updateRangeProgress(elements.lightnessSCurveEnd);
+  updateRangeProgress(elements.lightnessSCurveAmount);
 }
 
 function syncControls() {
@@ -282,6 +348,7 @@ function syncControls() {
   updateRangeProgress(elements.hueCount);
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
+  syncLightnessCurveControls();
   updateCurveGraph("chroma");
   updateCurveGraph("lightness");
 }
@@ -289,6 +356,8 @@ function syncControls() {
 function readSettingsFromControls(sourceElement) {
   let chromaMin = Number(elements.chromaMin.value);
   let chromaMax = Number(elements.chromaMax.value);
+  let lightnessSCurveStart = Number(elements.lightnessSCurveStart.value);
+  let lightnessSCurveEnd = Number(elements.lightnessSCurveEnd.value);
 
   if (sourceElement === elements.chromaMin && chromaMin > chromaMax) {
     chromaMax = chromaMin;
@@ -296,14 +365,31 @@ function readSettingsFromControls(sourceElement) {
   if (sourceElement === elements.chromaMax && chromaMax < chromaMin) {
     chromaMin = chromaMax;
   }
+  if (sourceElement === elements.lightnessSCurveStart && lightnessSCurveStart > lightnessSCurveEnd) {
+    lightnessSCurveEnd = lightnessSCurveStart;
+  }
+  if (sourceElement === elements.lightnessSCurveEnd && lightnessSCurveEnd < lightnessSCurveStart) {
+    lightnessSCurveStart = lightnessSCurveEnd;
+  }
+
+  const lightnessCurveMode =
+    elements.lightnessCurveModes.find((input) => input.checked)?.value ||
+    state.lightnessCurveMode;
 
   return normalizeSettings(
     {
       ...state,
-      version: 3,
+      version: 4,
       baseHue: Number(elements.baseHue.value),
       chromaMin,
       chromaMax,
+      lightnessCurveMode,
+      lightnessSCurve: {
+        ...state.lightnessSCurve,
+        start: lightnessSCurveStart,
+        end: lightnessSCurveEnd,
+        amount: Number(elements.lightnessSCurveAmount.value),
+      },
       paletteBackground: elements.paletteBackground.value,
       hueCount: Number(elements.hueCount.value),
       stepCount: Number(elements.stepCount.value),
@@ -518,10 +604,10 @@ function updateGamutSummary(gamutCount) {
 }
 
 function getCurvePreviewColors() {
-  return ["start", "middle", "end"].map((point) =>
+  return [0, 0.5, 1].map((progress) =>
     getSwatchColor(
-      state.lightnessCurve[point],
-      state.chromaCurve[point],
+      getCurveSampleValue("lightness", progress),
+      getCurveSampleValue("chroma", progress),
       state.baseHue,
     ),
   );
@@ -677,7 +763,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
   const nextSettings = normalizeSettings(
     {
       ...state,
-      version: 3,
+      version: 4,
       [curveKey]: nextCurve,
     },
     getDefaultPaletteBackground(),
@@ -784,8 +870,15 @@ function bindEvents() {
     elements.hueCount,
     elements.stepCount,
     elements.gap,
+    elements.lightnessSCurveStart,
+    elements.lightnessSCurveEnd,
+    elements.lightnessSCurveAmount,
   ].forEach((input) =>
     input.addEventListener("input", () => renderFromControls(input)),
+  );
+
+  elements.lightnessCurveModes.forEach((input) =>
+    input.addEventListener("change", () => renderFromControls(input)),
   );
 
   bindCurveEditor("chroma");

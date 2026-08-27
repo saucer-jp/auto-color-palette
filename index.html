@@ -195,9 +195,38 @@
                 <output id="lightness-curve-value">OKLCH L</output>
               </div>
               <div
+                class="curve-mode-control"
+                role="group"
+                aria-labelledby="lightness-curve-mode-label"
+              >
+                <span class="curve-mode-label" id="lightness-curve-mode-label">
+                  Curve type
+                </span>
+                <div class="curve-mode-options">
+                  <label class="curve-mode-option">
+                    <input
+                      type="radio"
+                      name="lightness-curve-mode"
+                      value="custom"
+                      checked
+                    />
+                    <span>Custom</span>
+                  </label>
+                  <label class="curve-mode-option">
+                    <input
+                      type="radio"
+                      name="lightness-curve-mode"
+                      value="s"
+                    />
+                    <span>S-curve</span>
+                  </label>
+                </div>
+              </div>
+              <div
                 class="curve-editor"
                 id="lightness-curve-editor"
                 data-curve="lightness"
+                data-mode="custom"
                 aria-describedby="lightness-curve-help"
               >
                 <svg
@@ -251,10 +280,62 @@
                   ></button>
                 </div>
               </div>
-              <div class="curve-point-values" aria-label="明度カーブの制御点">
+              <div class="curve-point-values" aria-label="明度カーブの値">
                 <span>Start <output id="lightness-curve-start-value">0.263</output></span>
                 <span>Middle <output id="lightness-curve-middle-value">0.623</output></span>
                 <span>End <output id="lightness-curve-end-value">0.983</output></span>
+              </div>
+              <div class="curve-s-controls" id="lightness-s-curve-controls" hidden>
+                <div class="curve-bound-controls">
+                  <div class="curve-bound">
+                    <div class="field-label-row">
+                      <label for="lightness-s-start">Minimum L</label>
+                      <output id="lightness-s-start-value" for="lightness-s-start">0.263</output>
+                    </div>
+                    <input
+                      id="lightness-s-start"
+                      class="range-input"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.001"
+                      value="0.263"
+                      aria-describedby="lightness-curve-help"
+                    />
+                  </div>
+                  <div class="curve-bound">
+                    <div class="field-label-row">
+                      <label for="lightness-s-end">Maximum L</label>
+                      <output id="lightness-s-end-value" for="lightness-s-end">0.983</output>
+                    </div>
+                    <input
+                      id="lightness-s-end"
+                      class="range-input"
+                      type="range"
+                      min="0"
+                      max="1"
+                      step="0.001"
+                      value="0.983"
+                      aria-describedby="lightness-curve-help"
+                    />
+                  </div>
+                </div>
+                <div class="curve-bound">
+                  <div class="field-label-row">
+                    <label for="lightness-s-amount">S strength</label>
+                    <output id="lightness-s-amount-value" for="lightness-s-amount">+70%</output>
+                  </div>
+                  <input
+                    id="lightness-s-amount"
+                    class="range-input"
+                    type="range"
+                    min="-1"
+                    max="1"
+                    step="0.01"
+                    value="0.7"
+                    aria-describedby="lightness-curve-help"
+                  />
+                </div>
               </div>
               <p class="control-help" id="lightness-curve-help">
                 ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。
