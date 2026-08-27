@@ -6,7 +6,7 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="選択した色からRelative Color Syntaxのoklch()でカラーパレットを作成します。"
+      content="基準HUEとOKLCHの彩度・明度カーブからカラーパレットを作成します。"
     />
     <title>Auto Color Palette</title>
     <link rel="stylesheet" href="./styles.css" />
@@ -19,12 +19,12 @@
           <p class="eyebrow">COLOR SYSTEM BUILDER</p>
           <h1>Auto Color Palette</h1>
           <p class="header-description">
-            ひとつの色から、色相と明度のデザイントークンを組み立てます。
+            基準HUEとOKLCHのカーブから、彩度と明度のデザイントークンを組み立てます。
           </p>
         </div>
         <div class="header-badge" aria-label="生成方式">
           <span class="badge-dot" aria-hidden="true"></span>
-          <span id="render-mode">CSS relative OKLCH</span>
+          <span id="render-mode">CSS OKLCH</span>
         </div>
       </header>
 
@@ -48,16 +48,19 @@
           <div class="control-stack">
             <div class="control-field">
               <div class="field-label-row">
-                <label for="base-color">Base color</label>
-                <output id="base-color-value" for="base-color">#3B82F6</output>
+                <label for="base-hue">Base HUE</label>
+                <output id="base-hue-value" for="base-hue">259.8°</output>
               </div>
-              <div class="color-control">
-                <input id="base-color" type="color" value="#3b82f6" />
-                <div>
-                  <p class="control-value" id="base-color-caption">#3B82F6</p>
-                  <p class="control-help">パレットの基準色</p>
-                </div>
-              </div>
+              <input
+                id="base-hue"
+                class="range-input"
+                type="range"
+                min="0"
+                max="359.9"
+                step="0.1"
+                value="259.8"
+              />
+              <p class="control-help">色相分割の起点（0〜359.9°）</p>
             </div>
 
             <div class="control-field">
@@ -76,42 +79,190 @@
               </div>
             </div>
 
-            <div class="control-field">
+            <div
+              class="control-field curve-field"
+              id="chroma-curve-field"
+              role="group"
+              aria-labelledby="chroma-curve-label"
+            >
               <div class="field-label-row">
-                <label for="darkest-lightness">Darkest lightness</label>
-                <output id="darkest-lightness-value" for="darkest-lightness">
-                  0.263
-                </output>
+                <span id="chroma-curve-label">Chroma curve</span>
+                <output id="chroma-curve-value">OKLCH C</output>
               </div>
-              <input
-                id="darkest-lightness"
-                class="range-input"
-                type="range"
-                min="0"
-                max="1"
-                step="0.001"
-                value="0.263"
-              />
-              <p class="control-help">最も暗い色のOKLCH l（0〜1）</p>
+              <div
+                class="curve-editor"
+                id="chroma-curve-editor"
+                data-curve="chroma"
+                aria-describedby="chroma-curve-help"
+              >
+                <svg
+                  class="curve-plot"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
+                  <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
+                  <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
+                  <path class="curve-path" id="chroma-curve-path" d="M 0 50 L 50 50 L 100 50" />
+                </svg>
+                <div class="curve-handle-layer">
+                  <button
+                    class="curve-handle"
+                    id="chroma-handle-start"
+                    data-point="start"
+                    type="button"
+                    role="slider"
+                    aria-label="彩度カーブの始点"
+                    aria-valuemin="0"
+                    aria-valuemax="0.4"
+                    aria-valuenow="0.188"
+                    aria-valuetext="0.188"
+                  ></button>
+                  <button
+                    class="curve-handle"
+                    id="chroma-handle-middle"
+                    data-point="middle"
+                    type="button"
+                    role="slider"
+                    aria-label="彩度カーブの中点"
+                    aria-valuemin="0"
+                    aria-valuemax="0.4"
+                    aria-valuenow="0.188"
+                    aria-valuetext="0.188"
+                  ></button>
+                  <button
+                    class="curve-handle"
+                    id="chroma-handle-end"
+                    data-point="end"
+                    type="button"
+                    role="slider"
+                    aria-label="彩度カーブの終点"
+                    aria-valuemin="0"
+                    aria-valuemax="0.4"
+                    aria-valuenow="0.188"
+                    aria-valuetext="0.188"
+                  ></button>
+                </div>
+              </div>
+              <div class="curve-point-values" aria-label="彩度カーブの制御点">
+                <span>Start <output id="chroma-curve-start-value">0.188</output></span>
+                <span>Middle <output id="chroma-curve-middle-value">0.188</output></span>
+                <span>End <output id="chroma-curve-end-value">0.188</output></span>
+              </div>
+              <div class="curve-bound-controls">
+                <div class="curve-bound">
+                  <div class="field-label-row">
+                    <label for="chroma-min">Minimum C</label>
+                    <output id="chroma-min-value" for="chroma-min">0.000</output>
+                  </div>
+                  <input
+                    id="chroma-min"
+                    class="range-input"
+                    type="range"
+                    min="0"
+                    max="0.4"
+                    step="0.001"
+                    value="0"
+                  />
+                </div>
+                <div class="curve-bound">
+                  <div class="field-label-row">
+                    <label for="chroma-max">Maximum C</label>
+                    <output id="chroma-max-value" for="chroma-max">0.400</output>
+                  </div>
+                  <input
+                    id="chroma-max"
+                    class="range-input"
+                    type="range"
+                    min="0"
+                    max="0.4"
+                    step="0.001"
+                    value="0.4"
+                  />
+                </div>
+              </div>
+              <p class="control-help" id="chroma-curve-help">
+                ステップ方向のOKLCH C（0〜0.4）。制御点は範囲内で個別に調整できます。
+              </p>
             </div>
 
-            <div class="control-field">
+            <div
+              class="control-field curve-field"
+              id="lightness-curve-field"
+              role="group"
+              aria-labelledby="lightness-curve-label"
+            >
               <div class="field-label-row">
-                <label for="lightest-lightness">Lightest lightness</label>
-                <output id="lightest-lightness-value" for="lightest-lightness">
-                  0.983
-                </output>
+                <span id="lightness-curve-label">Lightness curve</span>
+                <output id="lightness-curve-value">OKLCH L</output>
               </div>
-              <input
-                id="lightest-lightness"
-                class="range-input"
-                type="range"
-                min="0"
-                max="1"
-                step="0.001"
-                value="0.983"
-              />
-              <p class="control-help">最も明るい色のOKLCH l（0〜1）</p>
+              <div
+                class="curve-editor"
+                id="lightness-curve-editor"
+                data-curve="lightness"
+                aria-describedby="lightness-curve-help"
+              >
+                <svg
+                  class="curve-plot"
+                  viewBox="0 0 100 100"
+                  preserveAspectRatio="none"
+                  aria-hidden="true"
+                  focusable="false"
+                >
+                  <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
+                  <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
+                  <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
+                  <path class="curve-path" id="lightness-curve-path" d="M 0 75 L 50 38 L 100 2" />
+                </svg>
+                <div class="curve-handle-layer">
+                  <button
+                    class="curve-handle"
+                    id="lightness-handle-start"
+                    data-point="start"
+                    type="button"
+                    role="slider"
+                    aria-label="明度カーブの始点"
+                    aria-valuemin="0"
+                    aria-valuemax="1"
+                    aria-valuenow="0.263"
+                    aria-valuetext="0.263"
+                  ></button>
+                  <button
+                    class="curve-handle"
+                    id="lightness-handle-middle"
+                    data-point="middle"
+                    type="button"
+                    role="slider"
+                    aria-label="明度カーブの中点"
+                    aria-valuemin="0"
+                    aria-valuemax="1"
+                    aria-valuenow="0.623"
+                    aria-valuetext="0.623"
+                  ></button>
+                  <button
+                    class="curve-handle"
+                    id="lightness-handle-end"
+                    data-point="end"
+                    type="button"
+                    role="slider"
+                    aria-label="明度カーブの終点"
+                    aria-valuemin="0"
+                    aria-valuemax="1"
+                    aria-valuenow="0.983"
+                    aria-valuetext="0.983"
+                  ></button>
+                </div>
+              </div>
+              <div class="curve-point-values" aria-label="明度カーブの制御点">
+                <span>Start <output id="lightness-curve-start-value">0.263</output></span>
+                <span>Middle <output id="lightness-curve-middle-value">0.623</output></span>
+                <span>End <output id="lightness-curve-end-value">0.983</output></span>
+              </div>
+              <p class="control-help" id="lightness-curve-help">
+                ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。
+              </p>
             </div>
 
             <div class="control-field">
@@ -168,9 +319,9 @@
 
           <div class="recipe-card">
             <p class="section-kicker">TOKEN LOGIC</p>
-            <p class="recipe-title">Base hue + chroma → lightness range</p>
+            <p class="recipe-title">Base HUE + C/L curves</p>
             <p class="recipe-description">
-              選択色の色相・彩度を基準に、設定した最暗色から最明色まで中間を均等に補完します。
+              基準HUEを均等に分割し、共通のOKLCH C/Lカーブから各ステップを生成します。
             </p>
             <div class="recipe-scale" aria-hidden="true">
               <span class="recipe-scale-dark"></span>
@@ -210,6 +361,8 @@
             aria-live="polite"
             hidden
           ></div>
+
+          <p class="gamut-summary" id="gamut-summary" role="status" aria-live="polite" hidden></p>
 
           <div class="palette-frame">
             <div

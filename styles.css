@@ -51,11 +51,9 @@
     --danger-light: #ad3e43;
     --danger-dark: #ff9a94;
     --danger: var(--danger-light);
-    --base-color: #3b82f6;
-    --darkest-tone-delta: -0.36;
-    --lightest-tone-delta: 0.36;
-    --darkest-color: var(--base-color);
-    --lightest-color: var(--base-color);
+    --curve-start-color: #00027d;
+    --curve-middle-color: #3b82f6;
+    --curve-end-color: #c5ecff;
     --palette-background: #f9faf7;
     --palette-gap: 8px;
     --hue-count: 12;
@@ -396,6 +394,125 @@
     box-shadow: 0 0.15rem 0.45rem rgb(14 27 20 / 0.2);
   }
 
+  .curve-field {
+    grid-column: 1 / -1;
+  }
+
+  .curve-editor {
+    position: relative;
+    min-block-size: 10rem;
+    overflow: visible;
+    border: 1px solid var(--soft);
+    border-radius: 0.8rem;
+    background:
+      linear-gradient(
+        to bottom,
+        color-mix(in srgb, var(--accent) 8%, transparent),
+        transparent
+      ),
+      var(--surface-raised);
+    touch-action: none;
+  }
+
+  .curve-plot,
+  .curve-handle-layer {
+    position: absolute;
+    inset: 0;
+    inline-size: 100%;
+    block-size: 100%;
+  }
+
+  .curve-plot {
+    overflow: visible;
+    pointer-events: none;
+  }
+
+  .curve-grid-line {
+    stroke: var(--track);
+    stroke-width: 0.6;
+    stroke-dasharray: 1.5 2.5;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .curve-path {
+    fill: none;
+    stroke: var(--accent);
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    stroke-width: 2.4;
+    vector-effect: non-scaling-stroke;
+  }
+
+  .curve-handle-layer {
+    pointer-events: none;
+  }
+
+  .curve-handle {
+    position: absolute;
+    inline-size: 1.05rem;
+    block-size: 1.05rem;
+    padding: 0;
+    border: 0.18rem solid var(--surface);
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0.18rem 0.55rem rgb(14 27 20 / 0.26);
+    cursor: grab;
+    pointer-events: auto;
+    transform: translate(-50%, -50%);
+    transition:
+      transform 120ms ease,
+      box-shadow 120ms ease;
+  }
+
+  .curve-handle:hover,
+  .curve-handle.is-dragging {
+    box-shadow: 0 0.22rem 0.7rem rgb(14 27 20 / 0.32);
+    cursor: grabbing;
+    transform: translate(-50%, -50%) scale(1.18);
+  }
+
+  .curve-handle:focus-visible {
+    outline: 0.16rem solid var(--accent);
+    outline-offset: 0.22rem;
+  }
+
+  .curve-point-values {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.5rem;
+    color: var(--muted);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.64rem;
+    text-align: center;
+  }
+
+  .curve-point-values output {
+    color: var(--accent);
+    font-weight: 750;
+  }
+
+  .curve-bound-controls {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.8rem;
+  }
+
+  .curve-bound {
+    display: grid;
+    gap: 0.5rem;
+  }
+
+  .curve-bound .field-label-row label {
+    font-size: 0.68rem;
+  }
+
+  .gamut-summary {
+    grid-row: 3;
+    padding-block-end: 0.8rem;
+    color: var(--danger);
+    font-size: 0.72rem;
+  }
+
   .recipe-card {
     display: grid;
     gap: 0.55rem;
@@ -425,35 +542,15 @@
   }
 
   .recipe-scale-dark {
-    background: var(--darkest-color);
+    background: var(--curve-start-color);
   }
 
   .recipe-scale-mid {
-    background: var(--base-color);
+    background: var(--curve-middle-color);
   }
 
   .recipe-scale-light {
-    background: var(--lightest-color);
-  }
-
-  @supports (background-color: oklch(from #000 l c h)) {
-    .recipe-scale-dark {
-      background: oklch(
-        from var(--base-color)
-        clamp(0, calc(l + var(--darkest-tone-delta)), 1)
-        c
-        h
-      );
-    }
-
-    .recipe-scale-light {
-      background: oklch(
-        from var(--base-color)
-        clamp(0, calc(l + var(--lightest-tone-delta)), 1)
-        c
-        h
-      );
-    }
+    background: var(--curve-end-color);
   }
 
   .settings-footer {
@@ -476,7 +573,7 @@
 
   .preview-panel {
     display: grid;
-    grid-template-rows: auto auto minmax(0, 1fr) auto;
+    grid-template-rows: auto auto auto minmax(0, 1fr) auto;
     min-inline-size: 0;
     min-block-size: 0;
     overflow: clip;
@@ -519,7 +616,7 @@
   }
 
   .palette-frame {
-    grid-row: 3;
+    grid-row: 4;
     min-inline-size: 0;
     min-block-size: 0;
     overflow: auto;
@@ -599,21 +696,39 @@
     content: "";
   }
 
-  @supports (background-color: oklch(from #000 l c h)) {
+  @supports (background-color: oklch(0.5 0.1 180)) {
     .swatch::before {
       background-color: oklch(
-        from var(--base-color)
-        clamp(0, calc(l + var(--tone-delta)), 1)
+        var(--swatch-lightness)
         var(--swatch-chroma)
-        calc(h + var(--hue-offset))
+        var(--swatch-hue)
       );
     }
   }
 
-  @supports not (background-color: oklch(from #000 l c h)) {
+  @supports not (background-color: oklch(0.5 0.1 180)) {
     .swatch::before {
       background-color: var(--fallback-color);
     }
+  }
+
+  .swatch-alert {
+    position: absolute;
+    z-index: 1;
+    inset-block-start: 0.35rem;
+    inset-inline-end: 0.4rem;
+    display: grid;
+    place-items: center;
+    inline-size: 1.1rem;
+    block-size: 1.1rem;
+    border: 1px solid currentColor;
+    border-radius: 50%;
+    background: rgb(0 0 0 / 0.22);
+    color: inherit;
+    font-size: 0.72rem;
+    font-weight: 850;
+    line-height: 1;
+    pointer-events: none;
   }
 
   .swatch:hover:not(:disabled) {
@@ -680,7 +795,7 @@
   }
 
   .feedback-area {
-    grid-row: 4;
+    grid-row: 5;
     min-block-size: 2.2rem;
     padding-block-start: 1rem;
   }
@@ -830,7 +945,8 @@
   @media (prefers-reduced-motion: reduce) {
     .reset-button,
     .swatch,
-    .swatch-meta {
+    .swatch-meta,
+    .curve-handle {
       transition: none;
     }
   }
@@ -841,6 +957,12 @@
     }
 
     .copy-status {
+      color: CanvasText;
+    }
+
+    .swatch-alert {
+      border-color: CanvasText;
+      background: Canvas;
       color: CanvasText;
     }
   }

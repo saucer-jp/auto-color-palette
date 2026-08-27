@@ -1,22 +1,18 @@
-const DEFAULTS = Object.freeze({
-  baseColor: "#3B82F6",
-  darkestLightness: 0.263,
-  lightestLightness: 0.983,
-  hueCount: 12,
-  stepCount: 12,
-  gap: 8,
-});
+import {
+  LIMITS,
+  clamp,
+  createDefaultSettings,
+  evaluateChroma,
+  evaluateLightness,
+  generatePalette,
+  getSwatchColor,
+  normalizeHex,
+  normalizeSettings,
+} from "./palette-model.mjs";
 
 const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
   light: "#F9FAF7",
   dark: "#202522",
-});
-
-const LIMITS = Object.freeze({
-  hueCount: { min: 2, max: 24 },
-  stepCount: { min: 5, max: 30 },
-  gap: { min: 0, max: 40 },
-  lightness: { min: 0, max: 1 },
 });
 
 const STORAGE_KEY = "auto-color-palette-settings-v1";
@@ -27,28 +23,19 @@ function getDefaultPaletteBackground() {
     : DEFAULT_PALETTE_BACKGROUNDS.light;
 }
 
-const state = {
-  baseColor: DEFAULTS.baseColor,
-  paletteBackground: getDefaultPaletteBackground(),
-  darkestLightness: DEFAULTS.darkestLightness,
-  lightestLightness: DEFAULTS.lightestLightness,
-  hueCount: DEFAULTS.hueCount,
-  stepCount: DEFAULTS.stepCount,
-  gap: DEFAULTS.gap,
-};
+const state = createDefaultSettings(getDefaultPaletteBackground());
 
 const elements = {
   root: document.documentElement,
-  baseColor: document.querySelector("#base-color"),
-  baseColorValue: document.querySelector("#base-color-value"),
-  baseColorCaption: document.querySelector("#base-color-caption"),
+  baseHue: document.querySelector("#base-hue"),
+  baseHueValue: document.querySelector("#base-hue-value"),
   paletteBackground: document.querySelector("#palette-background"),
   paletteBackgroundValue: document.querySelector("#palette-background-value"),
   paletteBackgroundCaption: document.querySelector("#palette-background-caption"),
-  darkestLightness: document.querySelector("#darkest-lightness"),
-  darkestLightnessValue: document.querySelector("#darkest-lightness-value"),
-  lightestLightness: document.querySelector("#lightest-lightness"),
-  lightestLightnessValue: document.querySelector("#lightest-lightness-value"),
+  chromaMin: document.querySelector("#chroma-min"),
+  chromaMinValue: document.querySelector("#chroma-min-value"),
+  chromaMax: document.querySelector("#chroma-max"),
+  chromaMaxValue: document.querySelector("#chroma-max-value"),
   hueCount: document.querySelector("#hue-count"),
   hueCountValue: document.querySelector("#hue-count-value"),
   stepCount: document.querySelector("#step-count"),
@@ -58,6 +45,7 @@ const elements = {
   resetButton: document.querySelector("#reset-button"),
   renderMode: document.querySelector("#render-mode"),
   compatibilityNote: document.querySelector("#compatibility-note"),
+  gamutSummary: document.querySelector("#gamut-summary"),
   paletteSummary: document.querySelector("#palette-summary"),
   paletteGrid: document.querySelector("#palette-grid"),
   storageStatus: document.querySelector("#storage-status"),
@@ -67,9 +55,34 @@ const elements = {
   retryCopy: document.querySelector("#retry-copy"),
 };
 
-const supportsRelativeOklch =
+const curveElements = {
+  chroma: {
+    editor: document.querySelector("#chroma-curve-editor"),
+    path: document.querySelector("#chroma-curve-path"),
+    handles: [...document.querySelectorAll("#chroma-curve-editor .curve-handle")],
+    outputs: {
+      start: document.querySelector("#chroma-curve-start-value"),
+      middle: document.querySelector("#chroma-curve-middle-value"),
+      end: document.querySelector("#chroma-curve-end-value"),
+    },
+  },
+  lightness: {
+    editor: document.querySelector("#lightness-curve-editor"),
+    path: document.querySelector("#lightness-curve-path"),
+    handles: [
+      ...document.querySelectorAll("#lightness-curve-editor .curve-handle"),
+    ],
+    outputs: {
+      start: document.querySelector("#lightness-curve-start-value"),
+      middle: document.querySelector("#lightness-curve-middle-value"),
+      end: document.querySelector("#lightness-curve-end-value"),
+    },
+  },
+};
+
+const supportsOklch =
   typeof CSS !== "undefined" &&
-  CSS.supports("background-color", "oklch(from #3b82f6 l c h)");
+  CSS.supports("background-color", "oklch(0.5 0.1 180)");
 
 const colorCanvas = document.createElement("canvas");
 colorCanvas.width = 1;
@@ -79,67 +92,30 @@ let copyFeedbackTimer;
 let renderFrame;
 let lastFallbackTarget = null;
 
-function clamp(value, min, max) {
-  return Math.min(Math.max(value, min), max);
+function formatDegree(degree) {
+  return String(Math.round(Number(degree) * 10) / 10);
 }
 
-function normalizeHex(value, fallback = DEFAULTS.baseColor) {
-  const normalized = String(value || "").trim().toUpperCase();
+function formatCurveValue(value) {
+  return Number(value).toFixed(3);
+}
 
-  if (/^#[0-9A-F]{6}$/.test(normalized)) {
-    return normalized;
+function formatCssNumber(value) {
+  return String(Number(Number(value).toFixed(6)));
+}
+
+function getCurveKey(curveType) {
+  return curveType + "Curve";
+}
+
+function setStorageStatus(message, kind) {
+  elements.storageStatus.textContent = message;
+
+  if (kind) {
+    elements.storageStatus.dataset.kind = kind;
+  } else {
+    delete elements.storageStatus.dataset.kind;
   }
-
-  if (/^#[0-9A-F]{3}$/.test(normalized)) {
-    return (
-      "#" +
-      normalized
-        .slice(1)
-        .split("")
-        .map((character) => character + character)
-        .join("")
-    );
-  }
-
-  return fallback;
-}
-
-function normalizeRangeValue(value, limits, fallback) {
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? Math.round(clamp(number, limits.min, limits.max))
-    : fallback;
-}
-
-function normalizeLightness(value, fallback) {
-  const number = Number(value);
-
-  return Number.isFinite(number)
-    ? Math.round(
-        clamp(number, LIMITS.lightness.min, LIMITS.lightness.max) * 1000,
-      ) / 1000
-    : fallback;
-}
-
-function formatLightness(value) {
-  return value.toFixed(3);
-}
-
-function normalizeLightnessRange(darkestLightness, lightestLightness) {
-  const darkest = normalizeLightness(
-    darkestLightness,
-    DEFAULTS.darkestLightness,
-  );
-  const lightest = normalizeLightness(
-    lightestLightness,
-    DEFAULTS.lightestLightness,
-  );
-
-  return {
-    darkestLightness: Math.min(darkest, lightest),
-    lightestLightness: Math.max(darkest, lightest),
-  };
 }
 
 function loadSettings() {
@@ -154,52 +130,21 @@ function loadSettings() {
       return null;
     }
 
-    const lightnessRange = normalizeLightnessRange(
-      storedSettings.darkestLightness,
-      storedSettings.lightestLightness,
-    );
-
-    return {
-      baseColor: normalizeHex(storedSettings.baseColor, DEFAULTS.baseColor),
-      paletteBackground: normalizeHex(
-        storedSettings.paletteBackground,
-        getDefaultPaletteBackground(),
-      ),
-      ...lightnessRange,
-      hueCount: normalizeRangeValue(
-        storedSettings.hueCount,
-        LIMITS.hueCount,
-        DEFAULTS.hueCount,
-      ),
-      stepCount: normalizeRangeValue(
-        storedSettings.stepCount,
-        LIMITS.stepCount,
-        DEFAULTS.stepCount,
-      ),
-      gap: normalizeRangeValue(storedSettings.gap, LIMITS.gap, DEFAULTS.gap),
-    };
+    return normalizeSettings(storedSettings, getDefaultPaletteBackground());
   } catch {
     return null;
   }
 }
 
-function setStorageStatus(message, kind) {
-  elements.storageStatus.textContent = message;
-
-  if (kind) {
-    elements.storageStatus.dataset.kind = kind;
-  } else {
-    delete elements.storageStatus.dataset.kind;
-  }
-}
-
 function saveSettings() {
   const settings = {
-    version: 2,
-    baseColor: state.baseColor,
+    version: 3,
+    baseHue: state.baseHue,
+    chromaMin: state.chromaMin,
+    chromaMax: state.chromaMax,
+    chromaCurve: { ...state.chromaCurve },
+    lightnessCurve: { ...state.lightnessCurve },
     paletteBackground: state.paletteBackground,
-    darkestLightness: state.darkestLightness,
-    lightestLightness: state.lightestLightness,
     hueCount: state.hueCount,
     stepCount: state.stepCount,
     gap: state.gap,
@@ -213,148 +158,6 @@ function saveSettings() {
   }
 }
 
-function hexToRgb(hex) {
-  const normalized = normalizeHex(hex);
-  return {
-    r: Number.parseInt(normalized.slice(1, 3), 16),
-    g: Number.parseInt(normalized.slice(3, 5), 16),
-    b: Number.parseInt(normalized.slice(5, 7), 16),
-  };
-}
-
-function srgbToLinear(channel) {
-  const value = channel / 255;
-  return value <= 0.04045
-    ? value / 12.92
-    : Math.pow((value + 0.055) / 1.055, 2.4);
-}
-
-function linearToSrgb(channel) {
-  const value = clamp(channel, 0, 1);
-  return value <= 0.0031308
-    ? value * 12.92
-    : 1.055 * Math.pow(value, 1 / 2.4) - 0.055;
-}
-
-function srgbToOklch(hex) {
-  const rgb = hexToRgb(hex);
-  const red = srgbToLinear(rgb.r);
-  const green = srgbToLinear(rgb.g);
-  const blue = srgbToLinear(rgb.b);
-
-  const lightness = 0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue;
-  const middle = 0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue;
-  const short = 0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue;
-
-  const lightnessRoot = Math.cbrt(lightness);
-  const middleRoot = Math.cbrt(middle);
-  const shortRoot = Math.cbrt(short);
-
-  const L =
-    0.2104542553 * lightnessRoot +
-    0.793617785 * middleRoot -
-    0.0040720468 * shortRoot;
-  const a =
-    1.9779984951 * lightnessRoot -
-    2.428592205 * middleRoot +
-    0.4505937099 * shortRoot;
-  const b =
-    0.0259040371 * lightnessRoot +
-    0.7827717662 * middleRoot -
-    0.808675766 * shortRoot;
-  const H = (Math.atan2(b, a) * 180) / Math.PI;
-
-  return {
-    L: clamp(L, 0, 1),
-    C: Math.hypot(a, b),
-    H: H < 0 ? H + 360 : H,
-  };
-}
-
-function oklchToHex(L, C, H) {
-  const hue = (H * Math.PI) / 180;
-  const a = C * Math.cos(hue);
-  const b = C * Math.sin(hue);
-
-  const lightnessRoot = L + 0.3963377774 * a + 0.2158037573 * b;
-  const middleRoot = L - 0.1055613458 * a - 0.0638541728 * b;
-  const shortRoot = L - 0.0894841775 * a - 1.291485548 * b;
-
-  const lightness = lightnessRoot * lightnessRoot * lightnessRoot;
-  const middle = middleRoot * middleRoot * middleRoot;
-  const short = shortRoot * shortRoot * shortRoot;
-
-  const red = 4.0767416621 * lightness - 3.3077115913 * middle + 0.2309699292 * short;
-  const green =
-    -1.2684380046 * lightness + 2.6097574011 * middle - 0.3413193965 * short;
-  const blue =
-    -0.0041960863 * lightness - 0.7034186147 * middle + 1.707614701 * short;
-
-  return rgbToHex(
-    Math.round(linearToSrgb(red) * 255),
-    Math.round(linearToSrgb(green) * 255),
-    Math.round(linearToSrgb(blue) * 255),
-  );
-}
-
-function rgbToHex(red, green, blue) {
-  return (
-    "#" +
-    [red, green, blue]
-      .map((channel) => clamp(channel, 0, 255).toString(16).padStart(2, "0"))
-      .join("")
-      .toUpperCase()
-  );
-}
-
-function getRelativeLuminance(hex) {
-  const rgb = hexToRgb(hex);
-  const channels = [rgb.r, rgb.g, rgb.b].map((channel) => {
-    const value = channel / 255;
-    return value <= 0.03928
-      ? value / 12.92
-      : Math.pow((value + 0.055) / 1.055, 2.4);
-  });
-
-  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
-}
-
-function getReadableTextColor(hex) {
-  const luminance = getRelativeLuminance(hex);
-  const contrastOnWhite = 1.05 / (luminance + 0.05);
-  const contrastOnBlack = (luminance + 0.05) / 0.05;
-  return contrastOnWhite >= contrastOnBlack ? "#FFFFFF" : "#101312";
-}
-
-function getToneDelta(stepIndex, stepCount, baseLightness) {
-  const progress = stepIndex / Math.max(stepCount - 1, 1);
-  const darkestDelta = state.darkestLightness - baseLightness;
-  const lightestDelta = state.lightestLightness - baseLightness;
-  return darkestDelta + (lightestDelta - darkestDelta) * progress;
-}
-
-function getSwatchAriaLabel(swatch, hex) {
-  const columnLabel =
-    swatch.dataset.columnType === "grayscale"
-      ? "グレースケール"
-      : "色相 " + formatDegree(Number(swatch.dataset.hueOffset)) + "度";
-
-  return (
-    columnLabel +
-    "、ステップ " +
-    swatch.dataset.stepNumber +
-    " / " +
-    state.stepCount +
-    "、" +
-    hex +
-    "をコピー"
-  );
-}
-
-function formatDegree(degree) {
-  return Math.round(degree * 10) / 10;
-}
-
 function updateRangeProgress(input) {
   const min = Number(input.min);
   const max = Number(input.max);
@@ -364,19 +167,107 @@ function updateRangeProgress(input) {
   input.style.setProperty("--range-progress", progress + "%");
 }
 
+function getCurveRange(curveType) {
+  return curveType === "chroma"
+    ? {
+        min: state.chromaMin,
+        max: state.chromaMax,
+        step: 0.001,
+      }
+    : {
+        min: LIMITS.lightness.min,
+        max: LIMITS.lightness.max,
+        step: 0.001,
+      };
+}
+
+function curveValueToY(curveType, value) {
+  const range = getCurveRange(curveType);
+  const span = range.max - range.min;
+
+  if (span === 0) {
+    return 0.5;
+  }
+
+  return 1 - clamp((value - range.min) / span, 0, 1);
+}
+
+function curveYToValue(curveType, y) {
+  const range = getCurveRange(curveType);
+  return range.max - clamp(y, 0, 1) * (range.max - range.min);
+}
+
+function getCurveValue(curveType, point) {
+  return state[getCurveKey(curveType)][point];
+}
+
+function getCurveLabel(curveType, point) {
+  const curveLabel = curveType === "chroma" ? "彩度" : "明度";
+  const pointLabel =
+    point === "start" ? "始点" : point === "middle" ? "中点" : "終点";
+  return curveLabel + "カーブの" + pointLabel;
+}
+
+function getCurveSampleValue(curveType, progress) {
+  const curve = state[getCurveKey(curveType)];
+
+  return curveType === "chroma"
+    ? evaluateChroma(curve, state.chromaMin, state.chromaMax, progress)
+    : evaluateLightness(curve, progress);
+}
+
+function updateCurveGraph(curveType) {
+  const controls = curveElements[curveType];
+  const curve = state[getCurveKey(curveType)];
+  const sampleCount = 40;
+  const pathData = [];
+
+  for (let index = 0; index <= sampleCount; index += 1) {
+    const progress = index / sampleCount;
+    const value = getCurveSampleValue(curveType, progress);
+    const x = progress * 100;
+    const y = curveValueToY(curveType, value) * 100;
+    pathData.push((index === 0 ? "M" : "L") + " " + x + " " + y);
+  }
+
+  controls.path.setAttribute("d", pathData.join(" "));
+
+  controls.handles.forEach((handle) => {
+    const point = handle.dataset.point;
+    const value = curve[point];
+    const x = point === "start" ? 0 : point === "middle" ? 50 : 100;
+    const y = curveValueToY(curveType, value) * 100;
+    const range = getCurveRange(curveType);
+
+    handle.style.left = x + "%";
+    handle.style.top = y + "%";
+    handle.setAttribute("aria-label", getCurveLabel(curveType, point));
+    handle.setAttribute("aria-orientation", "vertical");
+    handle.setAttribute(
+      "aria-describedby",
+      controls.editor.getAttribute("aria-describedby"),
+    );
+    handle.setAttribute("aria-valuemin", formatCurveValue(range.min));
+    handle.setAttribute("aria-valuemax", formatCurveValue(range.max));
+    handle.setAttribute("aria-valuenow", formatCurveValue(value));
+    handle.setAttribute(
+      "aria-valuetext",
+      formatCurveValue(value) + (curveType === "chroma" ? " OKLCH C" : " OKLCH L"),
+    );
+    controls.outputs[point].textContent = formatCurveValue(value);
+  });
+}
+
 function syncControls() {
-  elements.baseColor.value = state.baseColor.toLowerCase();
-  elements.baseColorValue.textContent = state.baseColor;
-  elements.baseColorCaption.textContent = state.baseColor;
+  elements.baseHue.value = String(state.baseHue);
+  elements.baseHueValue.textContent = formatDegree(state.baseHue) + "°";
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.paletteBackgroundValue.textContent = state.paletteBackground;
   elements.paletteBackgroundCaption.textContent = state.paletteBackground;
-  elements.darkestLightness.max = formatLightness(state.lightestLightness);
-  elements.darkestLightness.value = formatLightness(state.darkestLightness);
-  elements.darkestLightnessValue.textContent = formatLightness(state.darkestLightness);
-  elements.lightestLightness.min = formatLightness(state.darkestLightness);
-  elements.lightestLightness.value = formatLightness(state.lightestLightness);
-  elements.lightestLightnessValue.textContent = formatLightness(state.lightestLightness);
+  elements.chromaMin.value = formatCurveValue(state.chromaMin);
+  elements.chromaMinValue.textContent = formatCurveValue(state.chromaMin);
+  elements.chromaMax.value = formatCurveValue(state.chromaMax);
+  elements.chromaMaxValue.textContent = formatCurveValue(state.chromaMax);
   elements.hueCount.value = String(state.hueCount);
   elements.hueCountValue.textContent = state.hueCount + " hues";
   elements.stepCount.value = String(state.stepCount);
@@ -384,109 +275,176 @@ function syncControls() {
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
 
-  updateRangeProgress(elements.darkestLightness);
-  updateRangeProgress(elements.lightestLightness);
+  updateRangeProgress(elements.baseHue);
+  updateRangeProgress(elements.chromaMin);
+  updateRangeProgress(elements.chromaMax);
   updateRangeProgress(elements.hueCount);
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
+  updateCurveGraph("chroma");
+  updateCurveGraph("lightness");
 }
 
-function createSwatch(
-  baseOklch,
-  hueOffset,
-  stepIndex,
-  chroma = baseOklch.C,
-  columnType = "hue",
-) {
-  const toneDelta = getToneDelta(stepIndex, state.stepCount, baseOklch.L);
-  const fallbackLightness = clamp(baseOklch.L + toneDelta, 0, 1);
-  const fallbackHex = oklchToHex(
-    fallbackLightness,
-    chroma,
-    columnType === "grayscale" ? 0 : baseOklch.H + hueOffset,
+function readSettingsFromControls(sourceElement) {
+  let chromaMin = Number(elements.chromaMin.value);
+  let chromaMax = Number(elements.chromaMax.value);
+
+  if (sourceElement === elements.chromaMin && chromaMin > chromaMax) {
+    chromaMax = chromaMin;
+  }
+  if (sourceElement === elements.chromaMax && chromaMax < chromaMin) {
+    chromaMin = chromaMax;
+  }
+
+  return normalizeSettings(
+    {
+      ...state,
+      version: 3,
+      baseHue: Number(elements.baseHue.value),
+      chromaMin,
+      chromaMax,
+      paletteBackground: elements.paletteBackground.value,
+      hueCount: Number(elements.hueCount.value),
+      stepCount: Number(elements.stepCount.value),
+      gap: Number(elements.gap.value),
+    },
+    getDefaultPaletteBackground(),
   );
+}
+
+function applySettings(settings, { persist = true } = {}) {
+  Object.assign(state, settings);
+  syncControls();
+  if (persist) {
+    saveSettings();
+  }
+  renderPalette();
+}
+
+function renderFromControls(sourceElement) {
+  applySettings(readSettingsFromControls(sourceElement));
+}
+
+function getSwatchAriaLabel(swatch, hex) {
+  const columnLabel =
+    swatch.dataset.columnType === "grayscale"
+      ? "グレースケール"
+      : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "度";
+  const gamutLabel =
+    swatch.dataset.gamutWarning === "true"
+      ? "、sRGB色域外のためクリップ"
+      : "";
+
+  return (
+    columnLabel +
+    "、ステップ " +
+    swatch.dataset.stepNumber +
+    " / " +
+    state.stepCount +
+    "、" +
+    hex +
+    gamutLabel +
+    "、クリックでコピー"
+  );
+}
+
+function createSwatch(swatchData) {
   const swatch = document.createElement("button");
-  const stepNumber = stepIndex + 1;
+  const meta = document.createElement("span");
+  const hexLabel = document.createElement("span");
+  const actionLabel = document.createElement("span");
 
   swatch.type = "button";
   swatch.className = "swatch";
   swatch.dataset.role = "swatch";
-  swatch.dataset.fallbackHex = fallbackHex;
-  swatch.dataset.hueOffset = String(hueOffset);
-  swatch.dataset.stepNumber = String(stepNumber);
-  swatch.dataset.columnType = columnType;
-  swatch.style.setProperty("--hue-offset", String(hueOffset));
-  swatch.style.setProperty("--swatch-chroma", String(chroma));
-  swatch.style.setProperty("--tone-delta", String(toneDelta));
-  swatch.style.setProperty("--fallback-color", fallbackHex);
-  swatch.style.setProperty("--swatch-foreground", getReadableTextColor(fallbackHex));
-  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, fallbackHex));
+  swatch.dataset.fallbackHex = swatchData.hex;
+  swatch.dataset.hue =
+    swatchData.columnType === "grayscale" ? "0" : String(swatchData.H);
+  swatch.dataset.stepNumber = String(swatchData.stepNumber);
+  swatch.dataset.columnType = swatchData.columnType;
+  swatch.dataset.gamutWarning = String(swatchData.isOutOfSrgbGamut);
+  swatch.style.setProperty("--swatch-lightness", formatCssNumber(swatchData.L));
+  swatch.style.setProperty("--swatch-chroma", formatCssNumber(swatchData.C));
+  swatch.style.setProperty("--swatch-hue", formatCssNumber(swatchData.H));
+  swatch.style.setProperty("--fallback-color", swatchData.hex);
+  swatch.style.setProperty(
+    "--swatch-foreground",
+    getReadableTextColor(swatchData.hex),
+  );
 
-  const meta = document.createElement("span");
+  if (swatchData.isOutOfSrgbGamut) {
+    const warning = document.createElement("span");
+    warning.className = "swatch-alert";
+    warning.setAttribute("aria-hidden", "true");
+    warning.textContent = "⚠";
+    swatch.append(warning);
+  }
+
+  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, swatchData.hex));
+
   meta.className = "swatch-meta";
-
-  const hexLabel = document.createElement("span");
   hexLabel.className = "swatch-hex";
-  hexLabel.textContent = fallbackHex;
-
-  const actionLabel = document.createElement("span");
+  hexLabel.textContent = swatchData.hex;
   actionLabel.className = "swatch-action";
   actionLabel.setAttribute("aria-hidden", "true");
   actionLabel.textContent = "COPY";
-
   meta.append(hexLabel, actionLabel);
   swatch.append(meta);
 
   return swatch;
 }
 
-function createHueColumn(baseOklch, hueIndex) {
-  const hueOffset = (hueIndex * 360) / state.hueCount;
-  const column = document.createElement("section");
+function createPaletteColumn(column, columnIndex) {
+  const section = document.createElement("section");
   const header = document.createElement("div");
   const label = document.createElement("h3");
   const stack = document.createElement("div");
-  const labelId = "hue-label-" + hueIndex;
+  const labelId = "palette-column-label-" + columnIndex;
 
-  column.className = "hue-column";
-  column.setAttribute("aria-labelledby", labelId);
+  section.className =
+    column.type === "grayscale"
+      ? "hue-column grayscale-column"
+      : "hue-column";
+  section.setAttribute("aria-labelledby", labelId);
   header.className = "hue-header";
   label.className = "hue-label";
   label.id = labelId;
-  label.textContent = "HUE " + formatDegree(hueOffset) + "°";
+  label.textContent =
+    column.type === "grayscale"
+      ? "GRAYSCALE"
+      : "HUE " + formatDegree(column.hue) + "°";
   stack.className = "swatch-stack";
 
-  for (let stepIndex = 0; stepIndex < state.stepCount; stepIndex += 1) {
-    stack.append(createSwatch(baseOklch, hueOffset, stepIndex));
-  }
+  column.swatches.forEach((swatchData) => {
+    stack.append(createSwatch(swatchData));
+  });
 
   header.append(label);
-  column.append(header, stack);
-  return column;
+  section.append(header, stack);
+  return section;
 }
 
-function createGrayscaleColumn(baseOklch) {
-  const column = document.createElement("section");
-  const header = document.createElement("div");
-  const label = document.createElement("h3");
-  const stack = document.createElement("div");
-  const labelId = "grayscale-label";
+function getReadableTextColor(hex) {
+  const luminance = getRelativeLuminance(hex);
+  const contrastOnWhite = 1.05 / (luminance + 0.05);
+  const contrastOnBlack = (luminance + 0.05) / 0.05;
+  return contrastOnWhite >= contrastOnBlack ? "#FFFFFF" : "#101312";
+}
 
-  column.className = "hue-column grayscale-column";
-  column.setAttribute("aria-labelledby", labelId);
-  header.className = "hue-header";
-  label.className = "hue-label";
-  label.id = labelId;
-  label.textContent = "GRAYSCALE";
-  stack.className = "swatch-stack";
+function getRelativeLuminance(hex) {
+  const normalized = normalizeHex(hex);
+  const channels = [
+    Number.parseInt(normalized.slice(1, 3), 16),
+    Number.parseInt(normalized.slice(3, 5), 16),
+    Number.parseInt(normalized.slice(5, 7), 16),
+  ].map((channel) => {
+    const value = channel / 255;
+    return value <= 0.03928
+      ? value / 12.92
+      : Math.pow((value + 0.055) / 1.055, 2.4);
+  });
 
-  for (let stepIndex = 0; stepIndex < state.stepCount; stepIndex += 1) {
-    stack.append(createSwatch(baseOklch, 0, stepIndex, 0, "grayscale"));
-  }
-
-  header.append(label);
-  column.append(header, stack);
-  return column;
+  return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2];
 }
 
 function cssColorToHex(cssColor) {
@@ -504,11 +462,17 @@ function cssColorToHex(cssColor) {
     return null;
   }
 
-  return rgbToHex(pixel[0], pixel[1], pixel[2]);
+  return (
+    "#" +
+    [pixel[0], pixel[1], pixel[2]]
+      .map((channel) => channel.toString(16).padStart(2, "0"))
+      .join("")
+      .toUpperCase()
+  );
 }
 
 function updateRenderedHexes() {
-  if (!supportsRelativeOklch) {
+  if (!supportsOklch) {
     return;
   }
 
@@ -528,16 +492,80 @@ function updateRenderedHexes() {
 }
 
 function updateCompatibilityMessage() {
-  if (supportsRelativeOklch) {
-    elements.renderMode.textContent = "CSS relative OKLCH";
+  if (supportsOklch) {
+    elements.renderMode.textContent = "CSS OKLCH";
     elements.compatibilityNote.hidden = true;
     return;
   }
 
   elements.renderMode.textContent = "JS color fallback";
   elements.compatibilityNote.textContent =
-    "このブラウザではCSS Relative Color Syntaxが使えないため、同じトークン計算をJavaScriptで表示しています。";
+    "このブラウザではCSS OKLCHが使えないため、同じトークン計算をJavaScriptで表示しています。";
   elements.compatibilityNote.hidden = false;
+}
+
+function updateGamutSummary(gamutCount) {
+  if (gamutCount === 0) {
+    elements.gamutSummary.hidden = true;
+    elements.gamutSummary.textContent = "";
+    return;
+  }
+
+  elements.gamutSummary.hidden = false;
+  elements.gamutSummary.textContent =
+    gamutCount + "色がsRGB色域外のためRGBにクリップされています。";
+}
+
+function getCurvePreviewColors() {
+  return ["start", "middle", "end"].map((point) =>
+    getSwatchColor(
+      state.lightnessCurve[point],
+      state.chromaCurve[point],
+      state.baseHue,
+    ),
+  );
+}
+
+function renderPalette() {
+  const palette = generatePalette(state);
+  const previewColors = getCurvePreviewColors();
+  const fragment = document.createDocumentFragment();
+  const gamutCount = palette.columns.reduce(
+    (count, column) =>
+      count + column.swatches.filter((swatch) => swatch.isOutOfSrgbGamut).length,
+    0,
+  );
+
+  elements.root.style.setProperty("--palette-background", state.paletteBackground);
+  elements.root.style.setProperty("--curve-start-color", previewColors[0].hex);
+  elements.root.style.setProperty("--curve-middle-color", previewColors[1].hex);
+  elements.root.style.setProperty("--curve-end-color", previewColors[2].hex);
+  elements.root.style.setProperty("--hue-count", String(state.hueCount));
+  elements.root.style.setProperty(
+    "--palette-column-count",
+    String(state.hueCount + 1),
+  );
+  elements.root.style.setProperty("--step-count", String(state.stepCount));
+  elements.root.style.setProperty("--palette-gap", state.gap + "px");
+  elements.paletteGrid.replaceChildren();
+
+  palette.columns.forEach((column, columnIndex) => {
+    fragment.append(createPaletteColumn(column, columnIndex));
+  });
+
+  elements.paletteGrid.append(fragment);
+  elements.paletteSummary.textContent =
+    "grayscale + " +
+    state.hueCount +
+    " hues × " +
+    state.stepCount +
+    " steps = " +
+    palette.totalColors +
+    " colors";
+  updateGamutSummary(gamutCount);
+
+  window.cancelAnimationFrame(renderFrame);
+  renderFrame = window.requestAnimationFrame(updateRenderedHexes);
 }
 
 function showCopyStatus(message, kind) {
@@ -616,123 +644,140 @@ async function copySwatch(swatch) {
   window.setTimeout(() => swatch.classList.remove("is-copied"), 900);
 }
 
-function renderPalette() {
-  const baseOklch = srgbToOklch(state.baseColor);
-  const darkestToneDelta = state.darkestLightness - baseOklch.L;
-  const lightestToneDelta = state.lightestLightness - baseOklch.L;
-  const fragment = document.createDocumentFragment();
+function setCurvePoint(curveType, point, rawValue, persist = false) {
+  const curveKey = getCurveKey(curveType);
+  const nextCurve = { ...state[curveKey] };
+  const range = getCurveRange(curveType);
+  let value = clamp(Number(rawValue), range.min, range.max);
 
-  elements.root.style.setProperty("--base-color", state.baseColor);
-  elements.root.style.setProperty("--palette-background", state.paletteBackground);
-  elements.root.style.setProperty("--darkest-tone-delta", String(darkestToneDelta));
-  elements.root.style.setProperty("--lightest-tone-delta", String(lightestToneDelta));
-  elements.root.style.setProperty(
-    "--darkest-color",
-    oklchToHex(state.darkestLightness, baseOklch.C, baseOklch.H),
-  );
-  elements.root.style.setProperty(
-    "--lightest-color",
-    oklchToHex(state.lightestLightness, baseOklch.C, baseOklch.H),
-  );
-  elements.root.style.setProperty("--hue-count", String(state.hueCount));
-  elements.root.style.setProperty(
-    "--palette-column-count",
-    String(state.hueCount + 1),
-  );
-  elements.root.style.setProperty("--step-count", String(state.stepCount));
-  elements.root.style.setProperty("--palette-gap", state.gap + "px");
-  elements.paletteGrid.replaceChildren();
-
-  fragment.append(createGrayscaleColumn(baseOklch));
-  for (let hueIndex = 0; hueIndex < state.hueCount; hueIndex += 1) {
-    fragment.append(createHueColumn(baseOklch, hueIndex));
+  if (curveType === "lightness") {
+    if (point === "start") {
+      value = Math.min(value, nextCurve.middle);
+    } else if (point === "middle") {
+      value = clamp(value, nextCurve.start, nextCurve.end);
+    } else {
+      value = Math.max(value, nextCurve.middle);
+    }
   }
 
-  elements.paletteGrid.append(fragment);
-  elements.paletteSummary.textContent =
-    "grayscale + " +
-    state.hueCount +
-    " hues × " +
-    state.stepCount +
-    " steps = " +
-    (state.hueCount + 1) * state.stepCount +
-    " colors";
-
-  if (baseOklch.C < 0.015) {
-    elements.compatibilityNote.hidden = false;
-    elements.compatibilityNote.textContent =
-      "選択色の彩度が低いため、色相を変えても見た目はほぼニュートラルになります。";
-  } else {
-    updateCompatibilityMessage();
-  }
-
-  window.cancelAnimationFrame(renderFrame);
-  renderFrame = window.requestAnimationFrame(updateRenderedHexes);
-}
-
-function render() {
-  state.baseColor = normalizeHex(elements.baseColor.value);
-  state.paletteBackground = normalizeHex(
-    elements.paletteBackground.value,
+  nextCurve[point] = Math.round(value * 1000) / 1000;
+  const nextSettings = normalizeSettings(
+    {
+      ...state,
+      version: 3,
+      [curveKey]: nextCurve,
+    },
     getDefaultPaletteBackground(),
   );
-  const lightnessRange = normalizeLightnessRange(
-    elements.darkestLightness.value,
-    elements.lightestLightness.value,
-  );
-  state.darkestLightness = lightnessRange.darkestLightness;
-  state.lightestLightness = lightnessRange.lightestLightness;
-  state.hueCount = normalizeRangeValue(
-    elements.hueCount.value,
-    LIMITS.hueCount,
-    DEFAULTS.hueCount,
-  );
-  state.stepCount = normalizeRangeValue(
-    elements.stepCount.value,
-    LIMITS.stepCount,
-    DEFAULTS.stepCount,
-  );
-  state.gap = normalizeRangeValue(
-    elements.gap.value,
-    LIMITS.gap,
-    DEFAULTS.gap,
-  );
+
+  Object.assign(state, nextSettings);
   syncControls();
-  saveSettings();
   renderPalette();
+  if (persist) {
+    saveSettings();
+  }
+}
+
+function updateCurvePointFromPointer(editor, handle, clientY) {
+  const rect = editor.getBoundingClientRect();
+  const y = clamp((clientY - rect.top) / rect.height, 0, 1);
+  const curveType = editor.dataset.curve;
+  setCurvePoint(curveType, handle.dataset.point, curveYToValue(curveType, y));
+}
+
+function handleCurvePointerMove(event) {
+  const handle = event.currentTarget;
+  const editor = handle.closest(".curve-editor");
+  updateCurvePointFromPointer(editor, handle, event.clientY);
+}
+
+function handleCurvePointerDown(event) {
+  const handle = event.currentTarget;
+  const editor = handle.closest(".curve-editor");
+
+  if (event.button !== 0 && event.pointerType !== "touch") {
+    return;
+  }
+
+  event.preventDefault();
+  handle.setPointerCapture(event.pointerId);
+  handle.classList.add("is-dragging");
+  updateCurvePointFromPointer(editor, handle, event.clientY);
+  handle.addEventListener("pointermove", handleCurvePointerMove);
+
+  const finishDrag = (endEvent) => {
+    if (handle.hasPointerCapture(endEvent.pointerId)) {
+      handle.releasePointerCapture(endEvent.pointerId);
+    }
+    handle.classList.remove("is-dragging");
+    handle.removeEventListener("pointermove", handleCurvePointerMove);
+    handle.removeEventListener("pointerup", finishDrag);
+    handle.removeEventListener("pointercancel", finishDrag);
+    saveSettings();
+  };
+
+  handle.addEventListener("pointerup", finishDrag, { once: true });
+  handle.addEventListener("pointercancel", finishDrag, { once: true });
+}
+
+function handleCurveKeydown(event) {
+  const handle = event.currentTarget;
+  const editor = handle.closest(".curve-editor");
+  const curveType = editor.dataset.curve;
+  const point = handle.dataset.point;
+  const range = getCurveRange(curveType);
+  const currentValue = getCurveValue(curveType, point);
+  let nextValue = currentValue;
+
+  if (event.key === "ArrowUp" || event.key === "ArrowRight") {
+    nextValue += range.step;
+  } else if (event.key === "ArrowDown" || event.key === "ArrowLeft") {
+    nextValue -= range.step;
+  } else if (event.key === "Home") {
+    nextValue = range.min;
+  } else if (event.key === "End") {
+    nextValue = range.max;
+  } else {
+    return;
+  }
+
+  event.preventDefault();
+  setCurvePoint(curveType, point, nextValue, true);
+}
+
+function bindCurveEditor(curveType) {
+  const controls = curveElements[curveType];
+
+  controls.handles.forEach((handle) => {
+    handle.addEventListener("pointerdown", handleCurvePointerDown);
+    handle.addEventListener("keydown", handleCurveKeydown);
+  });
 }
 
 function resetSettings() {
-  state.baseColor = DEFAULTS.baseColor;
-  state.paletteBackground = getDefaultPaletteBackground();
-  state.darkestLightness = DEFAULTS.darkestLightness;
-  state.lightestLightness = DEFAULTS.lightestLightness;
-  state.hueCount = DEFAULTS.hueCount;
-  state.stepCount = DEFAULTS.stepCount;
-  state.gap = DEFAULTS.gap;
-  elements.baseColor.value = DEFAULTS.baseColor.toLowerCase();
-  elements.paletteBackground.value = state.paletteBackground.toLowerCase();
-  elements.darkestLightness.value = formatLightness(DEFAULTS.darkestLightness);
-  elements.lightestLightness.value = formatLightness(DEFAULTS.lightestLightness);
-  elements.hueCount.value = String(DEFAULTS.hueCount);
-  elements.stepCount.value = String(DEFAULTS.stepCount);
-  elements.gap.value = String(DEFAULTS.gap);
+  Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
   hideCopyFallback();
+  syncControls();
+  renderPalette();
+  saveSettings();
   showCopyStatus("設定を初期値に戻しました", "success");
-  render();
 }
 
 function bindEvents() {
   [
-    elements.baseColor,
+    elements.baseHue,
     elements.paletteBackground,
-    elements.darkestLightness,
-    elements.lightestLightness,
+    elements.chromaMin,
+    elements.chromaMax,
     elements.hueCount,
     elements.stepCount,
     elements.gap,
-  ].forEach((input) => input.addEventListener("input", render));
+  ].forEach((input) =>
+    input.addEventListener("input", () => renderFromControls(input)),
+  );
 
+  bindCurveEditor("chroma");
+  bindCurveEditor("lightness");
   elements.resetButton.addEventListener("click", resetSettings);
 
   elements.paletteGrid.addEventListener("click", (event) => {
@@ -766,4 +811,5 @@ if (storedSettings) {
 bindEvents();
 updateCompatibilityMessage();
 syncControls();
-render();
+renderPalette();
+saveSettings();
