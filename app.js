@@ -209,9 +209,7 @@ function getCurveValue(curveType, point) {
     curveType === "lightness" &&
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S
   ) {
-    return point === "middle"
-      ? getCurveSampleValue(curveType, 0.5)
-      : state.lightnessSCurve[point];
+    return state.lightnessSCurve[point];
   }
 
   return state[getCurveKey(curveType)][point];
@@ -275,7 +273,7 @@ function updateCurveGraph(curveType) {
     const y = curveValueToY(curveType, value) * 100;
     const range = getCurveRange(curveType);
 
-    handle.hidden = isLightnessSCurve && point === "middle";
+    handle.hidden = false;
     handle.style.left = x + "%";
     handle.style.top = y + "%";
     handle.setAttribute("aria-label", getCurveLabel(curveType, point));
@@ -309,7 +307,7 @@ function syncLightnessCurveControls() {
   );
   elements.lightnessCurveHelp.textContent =
     mode === LIGHTNESS_CURVE_MODES.S
-      ? "ステップ方向のOKLCH L（0〜1）。始点と終点のつまみで範囲、S字の強さでカーブを調整できます。"
+      ? "ステップ方向のOKLCH L（0〜1）。始点・中点・終点のつまみとS字の強さでカーブを調整できます。"
       : "ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。";
   updateRangeProgress(elements.lightnessSCurveAmount);
 }
@@ -700,15 +698,13 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
   };
 
   if (isLightnessSCurve) {
-    if (point === "middle") {
-      return;
-    }
-
     const nextSCurve = { ...state.lightnessSCurve };
     if (point === "start") {
-      value = Math.min(value, nextSCurve.end);
+      value = Math.min(value, nextSCurve.middle);
+    } else if (point === "middle") {
+      value = clamp(value, nextSCurve.start, nextSCurve.end);
     } else {
-      value = Math.max(value, nextSCurve.start);
+      value = Math.max(value, nextSCurve.middle);
     }
     nextSCurve[point] = Math.round(value * 1000) / 1000;
     nextSettingsInput.lightnessSCurve = nextSCurve;

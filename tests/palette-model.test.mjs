@@ -34,7 +34,7 @@ test("lightness interpolation remains monotonic", () => {
 });
 
 test("S-curve lightness keeps its range and remains monotonic", () => {
-  const curve = { start: 0.2, end: 0.8, amount: 1 };
+  const curve = { start: 0.2, middle: 0.5, end: 0.8, amount: 1 };
   const straightValue = evaluateSCurve({ ...curve, amount: 0 }, 0.25);
   const sCurveValue = evaluateSCurve(curve, 0.25);
 
@@ -57,6 +57,21 @@ test("S-curve lightness keeps its range and remains monotonic", () => {
       LIGHTNESS_CURVE_MODES.S,
       curve,
     );
+    assert.ok(value >= previous, `${value} should be >= ${previous}`);
+    previous = value;
+  }
+});
+
+test("S-curve lightness uses its middle control point", () => {
+  const curve = { start: 0.2, middle: 0.35, end: 0.8, amount: 0.7 };
+
+  assert.equal(evaluateSCurve(curve, 0), 0.2);
+  assert.equal(evaluateSCurve(curve, 0.5), 0.35);
+  assert.equal(evaluateSCurve(curve, 1), 0.8);
+
+  let previous = evaluateSCurve(curve, 0);
+  for (let index = 1; index <= 100; index += 1) {
+    const value = evaluateSCurve(curve, index / 100);
     assert.ok(value >= previous, `${value} should be >= ${previous}`);
     previous = value;
   }
@@ -165,7 +180,7 @@ test("S-curve settings are normalized independently from the custom curve", () =
     baseHue: 180,
     lightnessCurve: { start: 0.9, middle: 0.4, end: 0.6 },
     lightnessCurveMode: LIGHTNESS_CURVE_MODES.S,
-    lightnessSCurve: { start: 0.85, end: 0.15, amount: 2 },
+    lightnessSCurve: { start: 0.85, middle: 0.65, end: 0.15, amount: 2 },
   });
 
   assert.equal(settings.lightnessCurveMode, LIGHTNESS_CURVE_MODES.S);
@@ -176,8 +191,25 @@ test("S-curve settings are normalized independently from the custom curve", () =
   });
   assert.deepEqual(settings.lightnessSCurve, {
     start: 0.15,
+    middle: 0.65,
     end: 0.85,
     amount: 1,
+  });
+});
+
+test("S-curve settings without a middle point retain the midpoint of their bounds", () => {
+  const settings = normalizeSettings({
+    version: 5,
+    baseHue: 180,
+    lightnessCurveMode: LIGHTNESS_CURVE_MODES.S,
+    lightnessSCurve: { start: 0.2, end: 0.8, amount: 0.7 },
+  });
+
+  assert.deepEqual(settings.lightnessSCurve, {
+    start: 0.2,
+    middle: 0.5,
+    end: 0.8,
+    amount: 0.7,
   });
 });
 

@@ -18,6 +18,7 @@ export const DEFAULTS = Object.freeze({
   lightnessCurveMode: LIGHTNESS_CURVE_MODES.CUSTOM,
   lightnessSCurve: Object.freeze({
     start: 0.263,
+    middle: 0.623,
     end: 0.983,
     amount: 0.7,
   }),
@@ -136,14 +137,20 @@ function normalizeLightnessCurveMode(value, fallback) {
 
 function normalizeLightnessSCurve(curve, fallback) {
   const source = curve && typeof curve === "object" ? curve : {};
-  const values = [
+  const [start, end] = [
     normalizeDecimal(source.start, LIMITS.lightness, fallback.start),
     normalizeDecimal(source.end, LIMITS.lightness, fallback.end),
   ].sort((left, right) => left - right);
+  const middle = clamp(
+    normalizeDecimal(source.middle, LIMITS.lightness, (start + end) / 2),
+    start,
+    end,
+  );
 
   return {
-    start: values[0],
-    end: values[1],
+    start,
+    middle,
+    end,
     amount: normalizeDecimal(
       source.amount,
       LIMITS.lightnessSCurveAmount,
@@ -484,22 +491,66 @@ export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
     LIMITS.lightness.min,
     LIMITS.lightness.max,
   );
+  const lower = Math.min(start, end);
+  const upper = Math.max(start, end);
+  const middle = clamp(
+    finiteNumber(source.middle, (lower + upper) / 2),
+    lower,
+    upper,
+  );
   const amount = clamp(
     finiteNumber(source.amount, DEFAULTS.lightnessSCurve.amount),
     LIMITS.lightnessSCurveAmount.min,
     LIMITS.lightnessSCurveAmount.max,
   );
   const t = clamp(finiteNumber(progress, 0), 0, 1);
-  const smooth = t * t * (3 - 2 * t);
-  const curveProgress = t + amount * (smooth - t);
-  const lower = Math.min(start, end);
-  const upper = Math.max(start, end);
 
-  return clamp(
-    lower + (upper - lower) * curveProgress,
-    LIMITS.lightness.min,
-    LIMITS.lightness.max,
+  if (t === 0) {
+    return lower;
+  }
+  if (t === 0.5) {
+    return middle;
+  }
+  if (t === 1) {
+    return upper;
+  }
+
+  const firstDelta = (middle - lower) / 0.5;
+  const secondDelta = (upper - middle) / 0.5;
+  const span = upper - lower;
+  let firstSlope = firstDelta * (1 - amount);
+  let middleSlope = (firstDelta + secondDelta) / 2 + (amount * span) / 2;
+  let lastSlope = secondDelta * (1 - amount);
+
+  [firstSlope, middleSlope] = limitSegmentSlopes(
+    firstDelta,
+    firstSlope,
+    middleSlope,
   );
+  [middleSlope, lastSlope] = limitSegmentSlopes(
+    secondDelta,
+    middleSlope,
+    lastSlope,
+  );
+
+  const value =
+    t < 0.5
+      ? interpolateHermite(
+          lower,
+          middle,
+          firstSlope,
+          middleSlope,
+          t / 0.5,
+        )
+      : interpolateHermite(
+          middle,
+          upper,
+          middleSlope,
+          lastSlope,
+          (t - 0.5) / 0.5,
+        );
+
+  return clamp(value, LIMITS.lightness.min, LIMITS.lightness.max);
 }
 
 export function evaluateLightness(
