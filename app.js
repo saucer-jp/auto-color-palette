@@ -10,6 +10,7 @@ import {
   normalizeHex,
   normalizeSettings,
 } from "./palette-model.mjs";
+import { getSettingsUrl, parseSettingsFromUrl } from "./settings-url.mjs";
 
 const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
   light: "#F9FAF7",
@@ -49,6 +50,7 @@ const elements = {
   lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
   lightnessCurveHelp: document.querySelector("#lightness-curve-help"),
   resetButton: document.querySelector("#reset-button"),
+  copyShareUrl: document.querySelector("#copy-share-url"),
   compatibilityNote: document.querySelector("#compatibility-note"),
   paletteGrid: document.querySelector("#palette-grid"),
   storageStatus: document.querySelector("#storage-status"),
@@ -122,6 +124,26 @@ function setStorageStatus(message, kind) {
   } else {
     delete elements.storageStatus.dataset.kind;
   }
+}
+
+function syncSettingsUrl() {
+  const nextUrl = getSettingsUrl(state, window.location.href);
+
+  if (nextUrl === window.location.href) {
+    return nextUrl;
+  }
+
+  try {
+    window.history.replaceState(window.history.state, "", nextUrl);
+  } catch {
+    // The palette still works when the host does not allow history updates.
+  }
+
+  return nextUrl;
+}
+
+function loadSettingsFromUrl() {
+  return parseSettingsFromUrl(window.location.href, getDefaultPaletteBackground());
 }
 
 function loadSettings() {
@@ -363,6 +385,7 @@ function readSettingsFromControls() {
 function applySettings(settings, { persist = true } = {}) {
   Object.assign(state, settings);
   syncControls();
+  syncSettingsUrl();
   if (persist) {
     saveSettings();
   }
@@ -685,6 +708,17 @@ async function copySwatch(swatch) {
   window.setTimeout(() => swatch.classList.remove("is-copied"), 900);
 }
 
+async function copyShareUrl() {
+  const shareUrl = syncSettingsUrl();
+
+  try {
+    await writeClipboard(shareUrl);
+    showToast("共有URLをコピーしました", "success");
+  } catch {
+    showToast("共有URLをコピーできませんでした。", "error");
+  }
+}
+
 function setCurvePoint(curveType, point, rawValue, persist = false) {
   const curveKey = getCurveKey(curveType);
   const range = getCurveRange(curveType);
@@ -732,6 +766,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
 
   Object.assign(state, nextSettings);
   syncControls();
+  syncSettingsUrl();
   renderPalette();
   if (persist) {
     saveSettings();
@@ -817,6 +852,7 @@ function bindCurveEditor(curveType) {
 function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
   syncControls();
+  syncSettingsUrl();
   renderPalette();
   saveSettings();
   showToast("設定を初期値に戻しました", "success");
@@ -841,6 +877,9 @@ function bindEvents() {
   bindCurveEditor("chroma");
   bindCurveEditor("lightness");
   elements.resetButton.addEventListener("click", resetSettings);
+  elements.copyShareUrl.addEventListener("click", () => {
+    void copyShareUrl();
+  });
   elements.showGamutWarnings.addEventListener("change", () => {
     renderFromControls(elements.showGamutWarnings);
   });
@@ -855,8 +894,11 @@ function bindEvents() {
   elements.toastClose.addEventListener("click", hideToast);
 }
 
-const storedSettings = loadSettings();
-if (storedSettings) {
+const urlSettings = loadSettingsFromUrl();
+const storedSettings = urlSettings ? null : loadSettings();
+if (urlSettings) {
+  Object.assign(state, urlSettings);
+} else if (storedSettings) {
   Object.assign(state, storedSettings);
 }
 
@@ -864,4 +906,5 @@ bindEvents();
 updateCompatibilityMessage();
 syncControls();
 renderPalette();
+syncSettingsUrl();
 saveSettings();

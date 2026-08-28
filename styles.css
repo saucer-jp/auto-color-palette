@@ -207,6 +207,7 @@
   }
 
   .reset-button:focus-visible,
+  .share-button:focus-visible,
   .range-input:focus-visible,
   .color-control input:focus-visible,
   .checkbox-control input:focus-visible {
@@ -578,6 +579,33 @@
     line-height: 1.6;
   }
 
+  .share-button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    inline-size: 100%;
+    min-block-size: 3rem;
+    margin-block-start: 0.9rem;
+    padding-block: 0.65rem;
+    padding-inline: 0.8rem;
+    border: 0;
+    border-radius: 0.7rem;
+    background: var(--accent);
+    color: var(--surface);
+    font-size: 0.74rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
+    transition:
+      filter 160ms ease,
+      transform 160ms ease;
+  }
+
+  .share-button:hover {
+    filter: brightness(1.08);
+    transform: translateY(-1px);
+  }
+
   .storage-status {
     margin-block-start: 0.45rem;
   }
@@ -933,6 +961,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .reset-button,
+    .share-button,
     .swatch,
     .swatch-meta,
     .curve-handle {

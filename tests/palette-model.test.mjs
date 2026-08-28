@@ -13,6 +13,12 @@ import {
   getSwatchColor,
   normalizeSettings,
 } from "../palette-model.mjs";
+import {
+  SETTINGS_URL_VERSION,
+  getSettingsUrl,
+  hasSettingsInUrl,
+  parseSettingsFromUrl,
+} from "../settings-url.mjs";
 
 test("three-point curves pass through their control points", () => {
   const curve = { start: 0.1, middle: 0.35, end: 0.8 };
@@ -255,4 +261,69 @@ test("chroma curve always uses the fixed 0 to 0.4 range", () => {
   assert.deepEqual(createDefaultSettings().chromaCurve, DEFAULTS.chromaCurve);
   assert.equal(Object.hasOwn(createDefaultSettings(), "chromaMin"), false);
   assert.equal(Object.hasOwn(createDefaultSettings(), "chromaMax"), false);
+});
+
+test("settings URL round-trips every shareable setting", () => {
+  const settings = normalizeSettings({
+    version: 5,
+    baseHue: 123.4,
+    chromaCurve: { start: 0.04, middle: 0.28, end: 0.09 },
+    lightnessCurve: { start: 0.21, middle: 0.58, end: 0.91 },
+    lightnessCurveMode: LIGHTNESS_CURVE_MODES.S,
+    lightnessSCurve: { start: 0.12, middle: 0.52, end: 0.88, amount: -0.45 },
+    paletteBackground: "#1a2b3c",
+    hueCount: 7,
+    stepCount: 19,
+    gap: 27,
+    showGamutWarnings: false,
+  });
+  const url = getSettingsUrl(
+    settings,
+    "https://example.test/palette?utm_source=share&baseHue=10#preview",
+  );
+  const parsedUrl = new URL(url);
+  const expectedParameters = [
+    "settings",
+    "baseHue",
+    "chromaStart",
+    "chromaMiddle",
+    "chromaEnd",
+    "lightnessStart",
+    "lightnessMiddle",
+    "lightnessEnd",
+    "lightnessCurveMode",
+    "lightnessSStart",
+    "lightnessSMiddle",
+    "lightnessSEnd",
+    "lightnessSAmount",
+    "paletteBackground",
+    "hueCount",
+    "stepCount",
+    "gap",
+    "showGamutWarnings",
+  ];
+
+  assert.equal(parsedUrl.searchParams.get("settings"), SETTINGS_URL_VERSION);
+  assert.equal(parsedUrl.searchParams.get("paletteBackground"), "#1A2B3C");
+  assert.equal(parsedUrl.searchParams.get("showGamutWarnings"), "0");
+  assert.equal(parsedUrl.searchParams.get("utm_source"), "share");
+  assert.match(url, /paletteBackground=%231A2B3C/);
+  expectedParameters.forEach((name) => {
+    assert.equal(parsedUrl.searchParams.has(name), true, name + " should be in URL");
+  });
+  assert.deepEqual(parseSettingsFromUrl(url), settings);
+});
+
+test("settings URL parsing falls back safely for missing or invalid values", () => {
+  const url =
+    "https://example.test/palette?settings=1&baseHue=not-a-number&showGamutWarnings=unknown";
+  const parsed = parseSettingsFromUrl(url, "#ABCDEF");
+  const defaults = createDefaultSettings("#ABCDEF");
+
+  assert.equal(hasSettingsInUrl(url), true);
+  assert.equal(parsed.baseHue, defaults.baseHue);
+  assert.equal(parsed.paletteBackground, defaults.paletteBackground);
+  assert.equal(parsed.showGamutWarnings, defaults.showGamutWarnings);
+  assert.equal(parseSettingsFromUrl("https://example.test/palette"), null);
+  assert.equal(hasSettingsInUrl("https://example.test/palette"), false);
 });
