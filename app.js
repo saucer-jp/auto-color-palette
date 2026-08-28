@@ -45,10 +45,6 @@ const elements = {
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
   ],
   lightnessSCurveControls: document.querySelector("#lightness-s-curve-controls"),
-  lightnessSCurveStart: document.querySelector("#lightness-s-start"),
-  lightnessSCurveStartValue: document.querySelector("#lightness-s-start-value"),
-  lightnessSCurveEnd: document.querySelector("#lightness-s-end"),
-  lightnessSCurveEndValue: document.querySelector("#lightness-s-end-value"),
   lightnessSCurveAmount: document.querySelector("#lightness-s-amount"),
   lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
   lightnessCurveHelp: document.querySelector("#lightness-curve-help"),
@@ -209,11 +205,29 @@ function curveYToValue(curveType, y) {
 }
 
 function getCurveValue(curveType, point) {
+  if (
+    curveType === "lightness" &&
+    state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S
+  ) {
+    return point === "middle"
+      ? getCurveSampleValue(curveType, 0.5)
+      : state.lightnessSCurve[point];
+  }
+
   return state[getCurveKey(curveType)][point];
 }
 
 function getCurveLabel(curveType, point) {
   const curveLabel = curveType === "chroma" ? "彩度" : "明度";
+  if (
+    curveType === "lightness" &&
+    state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S
+  ) {
+    const boundLabel =
+      point === "start" ? "最小値" : point === "end" ? "最大値" : "中点";
+    return curveLabel + "カーブの" + boundLabel;
+  }
+
   const pointLabel =
     point === "start" ? "始点" : point === "middle" ? "中点" : "終点";
   return curveLabel + "カーブの" + pointLabel;
@@ -234,7 +248,6 @@ function getCurveSampleValue(curveType, progress) {
 
 function updateCurveGraph(curveType) {
   const controls = curveElements[curveType];
-  const curve = state[getCurveKey(curveType)];
   const isLightnessSCurve =
     curveType === "lightness" &&
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
@@ -257,15 +270,12 @@ function updateCurveGraph(curveType) {
 
   controls.handles.forEach((handle) => {
     const point = handle.dataset.point;
-    const pointProgress = point === "start" ? 0 : point === "middle" ? 0.5 : 1;
-    const value = isLightnessSCurve
-      ? getCurveSampleValue(curveType, pointProgress)
-      : curve[point];
+    const value = getCurveValue(curveType, point);
     const x = point === "start" ? 0 : point === "middle" ? 50 : 100;
     const y = curveValueToY(curveType, value) * 100;
     const range = getCurveRange(curveType);
 
-    handle.hidden = isLightnessSCurve;
+    handle.hidden = isLightnessSCurve && point === "middle";
     handle.style.left = x + "%";
     handle.style.top = y + "%";
     handle.setAttribute("aria-label", getCurveLabel(curveType, point));
@@ -293,26 +303,14 @@ function syncLightnessCurveControls() {
   });
   elements.lightnessSCurveControls.hidden =
     mode !== LIGHTNESS_CURVE_MODES.S;
-  elements.lightnessSCurveStart.value = formatCurveValue(
-    state.lightnessSCurve.start,
-  );
-  elements.lightnessSCurveStartValue.textContent = formatCurveValue(
-    state.lightnessSCurve.start,
-  );
-  elements.lightnessSCurveEnd.value = formatCurveValue(state.lightnessSCurve.end);
-  elements.lightnessSCurveEndValue.textContent = formatCurveValue(
-    state.lightnessSCurve.end,
-  );
   elements.lightnessSCurveAmount.value = String(state.lightnessSCurve.amount);
   elements.lightnessSCurveAmountValue.textContent = formatSCurveAmount(
     state.lightnessSCurve.amount,
   );
   elements.lightnessCurveHelp.textContent =
     mode === LIGHTNESS_CURVE_MODES.S
-      ? "ステップ方向のOKLCH L（0〜1）。範囲とS字の強さを調整できます。"
+      ? "ステップ方向のOKLCH L（0〜1）。始点と終点のつまみで範囲、S字の強さでカーブを調整できます。"
       : "ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。";
-  updateRangeProgress(elements.lightnessSCurveStart);
-  updateRangeProgress(elements.lightnessSCurveEnd);
   updateRangeProgress(elements.lightnessSCurveAmount);
 }
 
@@ -339,17 +337,7 @@ function syncControls() {
   updateCurveGraph("lightness");
 }
 
-function readSettingsFromControls(sourceElement) {
-  let lightnessSCurveStart = Number(elements.lightnessSCurveStart.value);
-  let lightnessSCurveEnd = Number(elements.lightnessSCurveEnd.value);
-
-  if (sourceElement === elements.lightnessSCurveStart && lightnessSCurveStart > lightnessSCurveEnd) {
-    lightnessSCurveEnd = lightnessSCurveStart;
-  }
-  if (sourceElement === elements.lightnessSCurveEnd && lightnessSCurveEnd < lightnessSCurveStart) {
-    lightnessSCurveStart = lightnessSCurveEnd;
-  }
-
+function readSettingsFromControls() {
   const lightnessCurveMode =
     elements.lightnessCurveModes.find((input) => input.checked)?.value ||
     state.lightnessCurveMode;
@@ -362,8 +350,6 @@ function readSettingsFromControls(sourceElement) {
       lightnessCurveMode,
       lightnessSCurve: {
         ...state.lightnessSCurve,
-        start: lightnessSCurveStart,
-        end: lightnessSCurveEnd,
         amount: Number(elements.lightnessSCurveAmount.value),
       },
       paletteBackground: elements.paletteBackground.value,
@@ -385,8 +371,8 @@ function applySettings(settings, { persist = true } = {}) {
   renderPalette();
 }
 
-function renderFromControls(sourceElement) {
-  applySettings(readSettingsFromControls(sourceElement));
+function renderFromControls() {
+  applySettings(readSettingsFromControls());
 }
 
 function getSwatchAriaLabel(swatch, hex) {
@@ -703,27 +689,48 @@ async function copySwatch(swatch) {
 
 function setCurvePoint(curveType, point, rawValue, persist = false) {
   const curveKey = getCurveKey(curveType);
-  const nextCurve = { ...state[curveKey] };
   const range = getCurveRange(curveType);
   let value = clamp(Number(rawValue), range.min, range.max);
+  const isLightnessSCurve =
+    curveType === "lightness" &&
+    state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
+  const nextSettingsInput = {
+    ...state,
+    version: 5,
+  };
 
-  if (curveType === "lightness") {
-    if (point === "start") {
-      value = Math.min(value, nextCurve.middle);
-    } else if (point === "middle") {
-      value = clamp(value, nextCurve.start, nextCurve.end);
-    } else {
-      value = Math.max(value, nextCurve.middle);
+  if (isLightnessSCurve) {
+    if (point === "middle") {
+      return;
     }
+
+    const nextSCurve = { ...state.lightnessSCurve };
+    if (point === "start") {
+      value = Math.min(value, nextSCurve.end);
+    } else {
+      value = Math.max(value, nextSCurve.start);
+    }
+    nextSCurve[point] = Math.round(value * 1000) / 1000;
+    nextSettingsInput.lightnessSCurve = nextSCurve;
+  } else {
+    const nextCurve = { ...state[curveKey] };
+
+    if (curveType === "lightness") {
+      if (point === "start") {
+        value = Math.min(value, nextCurve.middle);
+      } else if (point === "middle") {
+        value = clamp(value, nextCurve.start, nextCurve.end);
+      } else {
+        value = Math.max(value, nextCurve.middle);
+      }
+    }
+
+    nextCurve[point] = Math.round(value * 1000) / 1000;
+    nextSettingsInput[curveKey] = nextCurve;
   }
 
-  nextCurve[point] = Math.round(value * 1000) / 1000;
   const nextSettings = normalizeSettings(
-    {
-      ...state,
-      version: 5,
-      [curveKey]: nextCurve,
-    },
+    nextSettingsInput,
     getDefaultPaletteBackground(),
   );
 
@@ -826,8 +833,6 @@ function bindEvents() {
     elements.hueCount,
     elements.stepCount,
     elements.gap,
-    elements.lightnessSCurveStart,
-    elements.lightnessSCurveEnd,
     elements.lightnessSCurveAmount,
   ].forEach((input) =>
     input.addEventListener("input", () => renderFromControls(input)),

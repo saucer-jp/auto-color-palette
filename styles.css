@@ -514,12 +514,6 @@
     font-weight: 750;
   }
 
-  .curve-bound-controls {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.8rem;
-  }
-
   .curve-bound {
     display: grid;
     gap: 0.5rem;
@@ -528,6 +522,10 @@
   .curve-s-controls {
     display: grid;
     gap: 0.8rem;
+  }
+
+  .curve-s-controls[hidden] {
+    display: none;
   }
 
   .curve-bound .field-label-row label {
