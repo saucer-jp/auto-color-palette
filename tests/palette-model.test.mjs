@@ -67,12 +67,12 @@ test("chroma interpolation supports a peak and stays within its range", () => {
   let maximum = 0;
 
   for (let index = 0; index <= 100; index += 1) {
-    const value = evaluateChroma(curve, 0, 0.4, index / 100);
+    const value = evaluateChroma(curve, index / 100);
     maximum = Math.max(maximum, value);
     assert.ok(value >= 0 && value <= 0.4);
   }
 
-  assert.equal(evaluateChroma(curve, 0, 0.4, 0.5), 0.3);
+  assert.equal(evaluateChroma(curve, 0.5), 0.3);
   assert.ok(maximum >= 0.3);
 });
 
@@ -144,7 +144,7 @@ test("legacy settings migrate only the old hue and preserve unrelated settings",
     "#F9FAF7",
   );
 
-  assert.equal(settings.version, 4);
+  assert.equal(settings.version, 5);
   assert.equal(settings.baseHue, 259.8);
   assert.equal(settings.paletteBackground, "#101010");
   assert.equal(settings.hueCount, 6);
@@ -197,11 +197,30 @@ test("invalid lightness control points are normalized into dark-to-light order",
     middle: 0.5,
     end: 0.9,
   });
-  assert.equal(settings.chromaMin, 0.1);
-  assert.equal(settings.chromaMax, 0.3);
   assert.deepEqual(settings.chromaCurve, {
-    start: 0.3,
+    start: 0.4,
     middle: 0.2,
-    end: 0.3,
+    end: 0.4,
   });
+  assert.equal(Object.hasOwn(settings, "chromaMin"), false);
+  assert.equal(Object.hasOwn(settings, "chromaMax"), false);
+});
+
+test("chroma curve always uses the fixed 0 to 0.4 range", () => {
+  const settings = normalizeSettings({
+    version: 4,
+    baseHue: 180,
+    chromaMin: 0.2,
+    chromaMax: 0.25,
+    chromaCurve: { start: 0, middle: 0.4, end: 0.1 },
+  });
+
+  assert.deepEqual(settings.chromaCurve, {
+    start: 0,
+    middle: 0.4,
+    end: 0.1,
+  });
+  assert.deepEqual(createDefaultSettings().chromaCurve, DEFAULTS.chromaCurve);
+  assert.equal(Object.hasOwn(createDefaultSettings(), "chromaMin"), false);
+  assert.equal(Object.hasOwn(createDefaultSettings(), "chromaMax"), false);
 });

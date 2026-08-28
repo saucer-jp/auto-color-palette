@@ -5,8 +5,6 @@ export const LIGHTNESS_CURVE_MODES = Object.freeze({
 
 export const DEFAULTS = Object.freeze({
   baseHue: 259.8,
-  chromaMin: 0,
-  chromaMax: 0.4,
   chromaCurve: Object.freeze({
     start: 0.188,
     middle: 0.188,
@@ -154,32 +152,10 @@ function normalizeLightnessSCurve(curve, fallback) {
   };
 }
 
-function normalizeChromaRange(minValue, maxValue) {
-  const min = normalizeDecimal(minValue, LIMITS.chroma, DEFAULTS.chromaMin);
-  const max = normalizeDecimal(maxValue, LIMITS.chroma, DEFAULTS.chromaMax);
-
-  return {
-    min: Math.min(min, max),
-    max: Math.max(min, max),
-  };
-}
-
-function normalizeChromaCurve(curve, fallback, min, max) {
-  const normalized = normalizeCurve(curve, fallback, LIMITS.chroma);
-
-  return {
-    start: clamp(normalized.start, min, max),
-    middle: clamp(normalized.middle, min, max),
-    end: clamp(normalized.end, min, max),
-  };
-}
-
 export function createDefaultSettings(paletteBackground = "#F9FAF7") {
   return {
-    version: 4,
+    version: 5,
     baseHue: DEFAULTS.baseHue,
-    chromaMin: DEFAULTS.chromaMin,
-    chromaMax: DEFAULTS.chromaMax,
     chromaCurve: { ...DEFAULTS.chromaCurve },
     lightnessCurve: { ...DEFAULTS.lightnessCurve },
     lightnessCurveMode: DEFAULTS.lightnessCurveMode,
@@ -227,17 +203,9 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
     rawSettings && typeof rawSettings === "object" ? rawSettings : {};
   const isLegacy =
     Number(source.version) < 3 || !Object.prototype.hasOwnProperty.call(source, "baseHue");
-  const range = isLegacy
-    ? { min: defaults.chromaMin, max: defaults.chromaMax }
-    : normalizeChromaRange(source.chromaMin, source.chromaMax);
   const chromaCurve = isLegacy
     ? { ...defaults.chromaCurve }
-    : normalizeChromaCurve(
-        source.chromaCurve,
-        defaults.chromaCurve,
-        range.min,
-        range.max,
-      );
+    : normalizeCurve(source.chromaCurve, defaults.chromaCurve, LIMITS.chroma);
   const lightnessCurve = isLegacy
     ? { ...defaults.lightnessCurve }
     : normalizeLightnessCurve(source.lightnessCurve, defaults.lightnessCurve);
@@ -252,12 +220,10 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
     : normalizeLightnessSCurve(source.lightnessSCurve, defaults.lightnessSCurve);
 
   return {
-    version: 4,
+    version: 5,
     baseHue: isLegacy
       ? legacyBaseHue(source)
       : normalizeHue(source.baseHue, defaults.baseHue),
-    chromaMin: range.min,
-    chromaMax: range.max,
     chromaCurve,
     lightnessCurve,
     lightnessCurveMode,
@@ -549,8 +515,12 @@ export function evaluateLightness(
   return clamp(evaluateCurve(curve, progress), 0, 1);
 }
 
-export function evaluateChroma(curve, min, max, progress) {
-  return clamp(evaluateCurve(curve, progress), min, max);
+export function evaluateChroma(curve, progress) {
+  return clamp(
+    evaluateCurve(curve, progress),
+    LIMITS.chroma.min,
+    LIMITS.chroma.max,
+  );
 }
 
 export function getSwatchColor(L, C, H) {
@@ -579,8 +549,6 @@ export function generatePalette(settings) {
     );
     const C = evaluateChroma(
       settings.chromaCurve,
-      settings.chromaMin,
-      settings.chromaMax,
       progress,
     );
 
@@ -618,8 +586,6 @@ export function generatePalette(settings) {
       );
       const C = evaluateChroma(
         settings.chromaCurve,
-        settings.chromaMin,
-        settings.chromaMax,
         progress,
       );
 

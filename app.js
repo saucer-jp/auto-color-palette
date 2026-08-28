@@ -33,10 +33,6 @@ const elements = {
   paletteBackground: document.querySelector("#palette-background"),
   paletteBackgroundValue: document.querySelector("#palette-background-value"),
   paletteBackgroundCaption: document.querySelector("#palette-background-caption"),
-  chromaMin: document.querySelector("#chroma-min"),
-  chromaMinValue: document.querySelector("#chroma-min-value"),
-  chromaMax: document.querySelector("#chroma-max"),
-  chromaMaxValue: document.querySelector("#chroma-max-value"),
   hueCount: document.querySelector("#hue-count"),
   hueCountValue: document.querySelector("#hue-count-value"),
   stepCount: document.querySelector("#step-count"),
@@ -152,10 +148,8 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    version: 4,
+    version: 5,
     baseHue: state.baseHue,
-    chromaMin: state.chromaMin,
-    chromaMax: state.chromaMax,
     chromaCurve: { ...state.chromaCurve },
     lightnessCurve: { ...state.lightnessCurve },
     lightnessCurveMode: state.lightnessCurveMode,
@@ -187,8 +181,8 @@ function updateRangeProgress(input) {
 function getCurveRange(curveType) {
   return curveType === "chroma"
     ? {
-        min: state.chromaMin,
-        max: state.chromaMax,
+        min: LIMITS.chroma.min,
+        max: LIMITS.chroma.max,
         step: 0.001,
       }
     : {
@@ -229,7 +223,7 @@ function getCurveSampleValue(curveType, progress) {
   const curve = state[getCurveKey(curveType)];
 
   return curveType === "chroma"
-    ? evaluateChroma(curve, state.chromaMin, state.chromaMax, progress)
+    ? evaluateChroma(curve, progress)
     : evaluateLightness(
         curve,
         progress,
@@ -328,10 +322,6 @@ function syncControls() {
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.paletteBackgroundValue.textContent = state.paletteBackground;
   elements.paletteBackgroundCaption.textContent = state.paletteBackground;
-  elements.chromaMin.value = formatCurveValue(state.chromaMin);
-  elements.chromaMinValue.textContent = formatCurveValue(state.chromaMin);
-  elements.chromaMax.value = formatCurveValue(state.chromaMax);
-  elements.chromaMaxValue.textContent = formatCurveValue(state.chromaMax);
   elements.hueCount.value = String(state.hueCount);
   elements.hueCountValue.textContent = state.hueCount + " hues";
   elements.stepCount.value = String(state.stepCount);
@@ -341,8 +331,6 @@ function syncControls() {
   elements.showGamutWarnings.checked = state.showGamutWarnings;
 
   updateRangeProgress(elements.baseHue);
-  updateRangeProgress(elements.chromaMin);
-  updateRangeProgress(elements.chromaMax);
   updateRangeProgress(elements.hueCount);
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
@@ -352,17 +340,9 @@ function syncControls() {
 }
 
 function readSettingsFromControls(sourceElement) {
-  let chromaMin = Number(elements.chromaMin.value);
-  let chromaMax = Number(elements.chromaMax.value);
   let lightnessSCurveStart = Number(elements.lightnessSCurveStart.value);
   let lightnessSCurveEnd = Number(elements.lightnessSCurveEnd.value);
 
-  if (sourceElement === elements.chromaMin && chromaMin > chromaMax) {
-    chromaMax = chromaMin;
-  }
-  if (sourceElement === elements.chromaMax && chromaMax < chromaMin) {
-    chromaMin = chromaMax;
-  }
   if (sourceElement === elements.lightnessSCurveStart && lightnessSCurveStart > lightnessSCurveEnd) {
     lightnessSCurveEnd = lightnessSCurveStart;
   }
@@ -377,10 +357,8 @@ function readSettingsFromControls(sourceElement) {
   return normalizeSettings(
     {
       ...state,
-      version: 4,
+      version: 5,
       baseHue: Number(elements.baseHue.value),
-      chromaMin,
-      chromaMax,
       lightnessCurveMode,
       lightnessSCurve: {
         ...state.lightnessSCurve,
@@ -743,7 +721,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
   const nextSettings = normalizeSettings(
     {
       ...state,
-      version: 4,
+      version: 5,
       [curveKey]: nextCurve,
     },
     getDefaultPaletteBackground(),
@@ -845,8 +823,6 @@ function bindEvents() {
   [
     elements.baseHue,
     elements.paletteBackground,
-    elements.chromaMin,
-    elements.chromaMax,
     elements.hueCount,
     elements.stepCount,
     elements.gap,
