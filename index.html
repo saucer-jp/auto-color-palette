@@ -34,292 +34,313 @@
           </div>
 
           <div class="control-stack">
-            <div class="control-field">
-              <div class="field-label-row">
-                <label for="base-hue">基準色相</label>
-                <output id="base-hue-value" for="base-hue">259.8°</output>
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="base-hue">基準色相</label>
+                  <output id="base-hue-value" for="base-hue">259.8°</output>
+                </div>
+                <input
+                  id="base-hue"
+                  class="range-input"
+                  type="range"
+                  min="0"
+                  max="359.9"
+                  step="0.1"
+                  value="259.8"
+                />
               </div>
-              <input
-                id="base-hue"
-                class="range-input"
-                type="range"
-                min="0"
-                max="359.9"
-                step="0.1"
-                value="259.8"
-              />
+
             </div>
 
-            <div class="control-field">
-              <div class="field-label-row">
-                <label for="palette-background">パレットの背景色</label>
-                <output id="palette-background-value" for="palette-background">
-                  #F9FAF7
-                </output>
-              </div>
-              <div class="color-control">
-                <input id="palette-background" type="color" value="#f9faf7" />
-              </div>
-            </div>
-
-            <div class="control-field">
-              <label class="checkbox-control" for="show-gamut-warnings">
-                <input id="show-gamut-warnings" type="checkbox" checked />
-                <span>
-                  色域外の警告ドットを表示
-                  <span
-                    class="gamut-warning-count"
-                    id="gamut-warning-count"
-                    aria-live="polite"
-                  >(0)</span>
-                </span>
-              </label>
-            </div>
-
-            <div
-              class="control-field curve-field"
-              id="chroma-curve-field"
-              role="group"
-              aria-labelledby="chroma-curve-label"
-            >
-              <div class="field-label-row">
-                <span id="chroma-curve-label">彩度カーブ</span>
-                <output id="chroma-curve-value">OKLCH C</output>
-              </div>
-              <div
-                class="curve-editor"
-                id="chroma-curve-editor"
-                data-curve="chroma"
-              >
-                <svg
-                  class="curve-plot"
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                  focusable="false"
-                >
-                  <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
-                  <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
-                  <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
-                  <path class="curve-path" id="chroma-curve-path" d="M 0 50 L 50 50 L 100 50" />
-                </svg>
-                <div class="curve-handle-layer">
-                  <button
-                    class="curve-handle"
-                    id="chroma-handle-start"
-                    data-point="start"
-                    type="button"
-                    role="slider"
-                    aria-label="彩度カーブの始点"
-                    aria-valuemin="0"
-                    aria-valuemax="0.4"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.188"
-                    aria-valuetext="0.188"
-                  ></button>
-                  <button
-                    class="curve-handle"
-                    id="chroma-handle-middle"
-                    data-point="middle"
-                    type="button"
-                    role="slider"
-                    aria-label="彩度カーブの中点"
-                    aria-valuemin="0"
-                    aria-valuemax="0.4"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.188"
-                    aria-valuetext="0.188"
-                  ></button>
-                  <button
-                    class="curve-handle"
-                    id="chroma-handle-end"
-                    data-point="end"
-                    type="button"
-                    role="slider"
-                    aria-label="彩度カーブの終点"
-                    aria-valuemin="0"
-                    aria-valuemax="0.4"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.188"
-                    aria-valuetext="0.188"
-                  ></button>
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="palette-background">パレットの背景色</label>
+                  <output id="palette-background-value" for="palette-background">
+                    #F9FAF7
+                  </output>
+                </div>
+                <div class="color-control">
+                  <input id="palette-background" type="color" value="#f9faf7" />
                 </div>
               </div>
-              <div class="curve-point-values" aria-label="彩度カーブの制御点">
-                <span>始点 <output id="chroma-curve-start-value">0.188</output></span>
-                <span>中点 <output id="chroma-curve-middle-value">0.188</output></span>
-                <span>終点 <output id="chroma-curve-end-value">0.188</output></span>
+
+            </div>
+
+            <div class="settings-section">
+              <div class="control-field">
+                <label class="checkbox-control" for="show-gamut-warnings">
+                  <input id="show-gamut-warnings" type="checkbox" checked />
+                  <span>
+                    色域外の警告ドットを表示
+                    <span
+                      class="gamut-warning-count"
+                      id="gamut-warning-count"
+                      aria-live="polite"
+                    >(0)</span>
+                  </span>
+                </label>
               </div>
             </div>
 
-            <div
-              class="control-field curve-field"
-              id="lightness-curve-field"
-              role="group"
-              aria-labelledby="lightness-curve-label"
-            >
-              <div class="field-label-row">
-                <span id="lightness-curve-label">明度カーブ</span>
-                <output id="lightness-curve-value">OKLCH L</output>
-              </div>
+            <div class="settings-section">
               <div
-                class="curve-mode-control"
+                class="control-field curve-field"
+                id="chroma-curve-field"
                 role="group"
-                aria-labelledby="lightness-curve-mode-label"
+                aria-labelledby="chroma-curve-label"
               >
-                <span class="curve-mode-label" id="lightness-curve-mode-label">
-                  カーブの種類
-                </span>
-                <div class="curve-mode-options">
-                  <label class="curve-mode-option">
-                    <input
-                      type="radio"
-                      name="lightness-curve-mode"
-                      value="custom"
-                      checked
-                    />
-                    <span>カスタム</span>
-                  </label>
-                  <label class="curve-mode-option">
-                    <input
-                      type="radio"
-                      name="lightness-curve-mode"
-                      value="s"
-                    />
-                    <span>S字カーブ</span>
-                  </label>
+                <div class="field-label-row">
+                  <span id="chroma-curve-label">彩度カーブ</span>
+                  <output id="chroma-curve-value">OKLCH C</output>
                 </div>
-              </div>
-              <div
-                class="curve-editor"
-                id="lightness-curve-editor"
-                data-curve="lightness"
-                data-mode="custom"
-              >
-                <svg
-                  class="curve-plot"
-                  viewBox="0 0 100 100"
-                  preserveAspectRatio="none"
-                  aria-hidden="true"
-                  focusable="false"
+                <div
+                  class="curve-editor"
+                  id="chroma-curve-editor"
+                  data-curve="chroma"
                 >
-                  <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
-                  <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
-                  <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
-                  <path class="curve-path" id="lightness-curve-path" d="M 0 75 L 50 38 L 100 2" />
-                </svg>
-                <div class="curve-handle-layer">
-                  <button
-                    class="curve-handle"
-                    id="lightness-handle-start"
-                    data-point="start"
-                    type="button"
-                    role="slider"
-                    aria-label="明度カーブの始点"
-                    aria-valuemin="0"
-                    aria-valuemax="1"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.263"
-                    aria-valuetext="0.263"
-                  ></button>
-                  <button
-                    class="curve-handle"
-                    id="lightness-handle-middle"
-                    data-point="middle"
-                    type="button"
-                    role="slider"
-                    aria-label="明度カーブの中点"
-                    aria-valuemin="0"
-                    aria-valuemax="1"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.623"
-                    aria-valuetext="0.623"
-                  ></button>
-                  <button
-                    class="curve-handle"
-                    id="lightness-handle-end"
-                    data-point="end"
-                    type="button"
-                    role="slider"
-                    aria-label="明度カーブの終点"
-                    aria-valuemin="0"
-                    aria-valuemax="1"
-                    aria-valuestep="0.001"
-                    aria-valuenow="0.983"
-                    aria-valuetext="0.983"
-                  ></button>
-                </div>
-              </div>
-              <div class="curve-point-values" aria-label="明度カーブの値">
-                <span>始点 <output id="lightness-curve-start-value">0.263</output></span>
-                <span>中点 <output id="lightness-curve-middle-value">0.623</output></span>
-                <span>終点 <output id="lightness-curve-end-value">0.983</output></span>
-              </div>
-              <div class="curve-s-controls" id="lightness-s-curve-controls" hidden>
-                <div class="curve-bound">
-                  <div class="field-label-row">
-                    <label for="lightness-s-amount">S字の強さ</label>
-                    <output id="lightness-s-amount-value" for="lightness-s-amount">+70%</output>
+                  <svg
+                    class="curve-plot"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
+                    <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
+                    <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
+                    <path class="curve-path" id="chroma-curve-path" d="M 0 50 L 50 50 L 100 50" />
+                  </svg>
+                  <div class="curve-handle-layer">
+                    <button
+                      class="curve-handle"
+                      id="chroma-handle-start"
+                      data-point="start"
+                      type="button"
+                      role="slider"
+                      aria-label="彩度カーブの始点"
+                      aria-valuemin="0"
+                      aria-valuemax="0.4"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.188"
+                      aria-valuetext="0.188"
+                    ></button>
+                    <button
+                      class="curve-handle"
+                      id="chroma-handle-middle"
+                      data-point="middle"
+                      type="button"
+                      role="slider"
+                      aria-label="彩度カーブの中点"
+                      aria-valuemin="0"
+                      aria-valuemax="0.4"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.188"
+                      aria-valuetext="0.188"
+                    ></button>
+                    <button
+                      class="curve-handle"
+                      id="chroma-handle-end"
+                      data-point="end"
+                      type="button"
+                      role="slider"
+                      aria-label="彩度カーブの終点"
+                      aria-valuemin="0"
+                      aria-valuemax="0.4"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.188"
+                      aria-valuetext="0.188"
+                    ></button>
                   </div>
-                  <input
-                    id="lightness-s-amount"
-                    class="range-input"
-                    type="range"
-                    min="-1"
-                    max="1"
-                    step="0.01"
-                    value="0.7"
-                  />
+                </div>
+                <div class="curve-point-values" aria-label="彩度カーブの制御点">
+                  <span>始点 <output id="chroma-curve-start-value">0.188</output></span>
+                  <span>中点 <output id="chroma-curve-middle-value">0.188</output></span>
+                  <span>終点 <output id="chroma-curve-end-value">0.188</output></span>
+                </div>
+              </div>
+
+            </div>
+
+            <div class="settings-section">
+              <div
+                class="control-field curve-field"
+                id="lightness-curve-field"
+                role="group"
+                aria-labelledby="lightness-curve-label"
+              >
+                <div class="field-label-row">
+                  <span id="lightness-curve-label">明度カーブ</span>
+                  <output id="lightness-curve-value">OKLCH L</output>
+                </div>
+                <div
+                  class="curve-mode-control"
+                  role="group"
+                  aria-labelledby="lightness-curve-mode-label"
+                >
+                  <span class="curve-mode-label" id="lightness-curve-mode-label">
+                    カーブの種類
+                  </span>
+                  <div class="curve-mode-options">
+                    <label class="curve-mode-option">
+                      <input
+                        type="radio"
+                        name="lightness-curve-mode"
+                        value="custom"
+                        checked
+                      />
+                      <span>カスタム</span>
+                    </label>
+                    <label class="curve-mode-option">
+                      <input
+                        type="radio"
+                        name="lightness-curve-mode"
+                        value="s"
+                      />
+                      <span>S字カーブ</span>
+                    </label>
+                  </div>
+                </div>
+                <div
+                  class="curve-editor"
+                  id="lightness-curve-editor"
+                  data-curve="lightness"
+                  data-mode="custom"
+                >
+                  <svg
+                    class="curve-plot"
+                    viewBox="0 0 100 100"
+                    preserveAspectRatio="none"
+                    aria-hidden="true"
+                    focusable="false"
+                  >
+                    <line class="curve-grid-line" x1="0" y1="25" x2="100" y2="25" />
+                    <line class="curve-grid-line" x1="0" y1="50" x2="100" y2="50" />
+                    <line class="curve-grid-line" x1="0" y1="75" x2="100" y2="75" />
+                    <path class="curve-path" id="lightness-curve-path" d="M 0 75 L 50 38 L 100 2" />
+                  </svg>
+                  <div class="curve-handle-layer">
+                    <button
+                      class="curve-handle"
+                      id="lightness-handle-start"
+                      data-point="start"
+                      type="button"
+                      role="slider"
+                      aria-label="明度カーブの始点"
+                      aria-valuemin="0"
+                      aria-valuemax="1"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.263"
+                      aria-valuetext="0.263"
+                    ></button>
+                    <button
+                      class="curve-handle"
+                      id="lightness-handle-middle"
+                      data-point="middle"
+                      type="button"
+                      role="slider"
+                      aria-label="明度カーブの中点"
+                      aria-valuemin="0"
+                      aria-valuemax="1"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.623"
+                      aria-valuetext="0.623"
+                    ></button>
+                    <button
+                      class="curve-handle"
+                      id="lightness-handle-end"
+                      data-point="end"
+                      type="button"
+                      role="slider"
+                      aria-label="明度カーブの終点"
+                      aria-valuemin="0"
+                      aria-valuemax="1"
+                      aria-valuestep="0.001"
+                      aria-valuenow="0.983"
+                      aria-valuetext="0.983"
+                    ></button>
+                  </div>
+                </div>
+                <div class="curve-point-values" aria-label="明度カーブの値">
+                  <span>始点 <output id="lightness-curve-start-value">0.263</output></span>
+                  <span>中点 <output id="lightness-curve-middle-value">0.623</output></span>
+                  <span>終点 <output id="lightness-curve-end-value">0.983</output></span>
+                </div>
+                <div class="curve-s-controls" id="lightness-s-curve-controls" hidden>
+                  <div class="curve-bound">
+                    <div class="field-label-row">
+                      <label for="lightness-s-amount">S字の強さ</label>
+                      <output id="lightness-s-amount-value" for="lightness-s-amount">+70%</output>
+                    </div>
+                    <input
+                      id="lightness-s-amount"
+                      class="range-input"
+                      type="range"
+                      min="-1"
+                      max="1"
+                      step="0.01"
+                      value="0.7"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
 
-            <div class="control-field">
-              <div class="field-label-row">
-                <label for="hue-count">色相数</label>
-                <output id="hue-count-value" for="hue-count">12色相</output>
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="hue-count">色相数</label>
+                  <output id="hue-count-value" for="hue-count">12色相</output>
+                </div>
+                <input
+                  id="hue-count"
+                  class="range-input"
+                  type="range"
+                  min="2"
+                  max="24"
+                  step="1"
+                  value="12"
+                />
               </div>
-              <input
-                id="hue-count"
-                class="range-input"
-                type="range"
-                min="2"
-                max="24"
-                step="1"
-                value="12"
-              />
+
             </div>
 
-            <div class="control-field">
-              <div class="field-label-row">
-                <label for="step-count">カラーステップ数</label>
-                <output id="step-count-value" for="step-count">12ステップ</output>
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="step-count">カラーステップ数</label>
+                  <output id="step-count-value" for="step-count">12ステップ</output>
+                </div>
+                <input
+                  id="step-count"
+                  class="range-input"
+                  type="range"
+                  min="5"
+                  max="30"
+                  step="1"
+                  value="12"
+                />
               </div>
-              <input
-                id="step-count"
-                class="range-input"
-                type="range"
-                min="5"
-                max="30"
-                step="1"
-                value="12"
-              />
+
             </div>
 
-            <div class="control-field">
-              <div class="field-label-row">
-                <label for="gap">グリッド間隔</label>
-                <output id="gap-value" for="gap">8px</output>
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="gap">グリッド間隔</label>
+                  <output id="gap-value" for="gap">8px</output>
+                </div>
+                <input
+                  id="gap"
+                  class="range-input"
+                  type="range"
+                  min="0"
+                  max="40"
+                  step="1"
+                  value="8"
+                />
               </div>
-              <input
-                id="gap"
-                class="range-input"
-                type="range"
-                min="0"
-                max="40"
-                step="1"
-                value="8"
-              />
             </div>
           </div>
 

@@ -39,6 +39,7 @@
     --soft-light: #e8ece6;
     --soft-dark: #2a312d;
     --soft: var(--soft-light);
+    --settings-divider: var(--soft);
     --track-light: #d9dfd9;
     --track-dark: #3d4740;
     --track: var(--track-light);
@@ -159,12 +160,14 @@
   }
 
   .settings-panel {
+    --panel-padding: clamp(1.15rem, 2.4vw, 2rem);
     display: flex;
     flex-direction: column;
     min-inline-size: 0;
     min-block-size: 0;
     overflow: auto;
-    padding: clamp(1.15rem, 2.4vw, 2rem);
+    padding-block: var(--panel-padding);
+    padding-inline: 0;
     background: var(--surface);
     box-shadow: 0 1rem 3.5rem rgb(14 27 20 / 0.07);
   }
@@ -172,6 +175,17 @@
   .panel-heading,
   .field-label-row {
     display: flex;
+  }
+
+  .panel-heading,
+  .settings-section,
+  .recipe-card,
+  .settings-footer {
+    padding-inline: var(--panel-padding);
+  }
+
+  .panel-heading,
+  .field-label-row {
     align-items: center;
     justify-content: space-between;
     gap: 0.8rem;
@@ -217,8 +231,24 @@
 
   .control-stack {
     display: grid;
-    gap: 1.45rem;
+    gap: 0;
     margin-block-start: clamp(1.8rem, 4vw, 3rem);
+  }
+
+  .settings-section {
+    display: grid;
+    grid-column: 1 / -1;
+    gap: 1.45rem;
+  }
+
+  .settings-section > .control-field {
+    grid-column: 1 / -1;
+  }
+
+  .settings-section + .settings-section {
+    margin-block-start: 1.45rem;
+    padding-block-start: 1.45rem;
+    border-block-start: 1px solid var(--settings-divider);
   }
 
   .control-field {
@@ -529,7 +559,8 @@
     display: grid;
     gap: 0.55rem;
     margin-block-start: auto;
-    padding-block-start: 2.4rem;
+    padding-block-start: 1.45rem;
+    border-block-start: 1px solid var(--settings-divider);
   }
 
   .recipe-title {
@@ -568,6 +599,7 @@
   .settings-footer {
     margin-block-start: 1.8rem;
     padding-block-start: 1rem;
+    border-block-start: 1px solid var(--settings-divider);
     line-height: 1.6;
   }
 
@@ -916,13 +948,23 @@
 
     .control-stack {
       grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 1.2rem 1rem;
+      gap: 0;
       margin-block-start: 1.5rem;
+    }
+
+    .settings-section {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 1.2rem 1rem;
+    }
+
+    .settings-section + .settings-section {
+      margin-block-start: 1.2rem;
+      padding-block-start: 1.2rem;
     }
 
     .recipe-card {
       margin-block-start: 1.8rem;
-      padding-block-start: 0;
+      padding-block-start: 1rem;
     }
 
     .preview-panel {
@@ -931,6 +973,10 @@
   }
 
   @media (max-width: 460px) {
+    .settings-section {
+      grid-template-columns: 1fr;
+    }
+
     .control-stack {
       grid-template-columns: 1fr;
     }
@@ -961,7 +1007,21 @@
     }
   }
 
+  @media (prefers-contrast: more) {
+    .settings-section + .settings-section,
+    .recipe-card,
+    .settings-footer {
+      border-block-start-color: var(--text);
+    }
+  }
+
   @media (forced-colors: active) {
+    .settings-section + .settings-section,
+    .recipe-card,
+    .settings-footer {
+      border-block-start-color: GrayText;
+    }
+
     .swatch:focus-visible {
       outline-color: Highlight;
     }
