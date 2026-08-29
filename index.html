@@ -48,7 +48,6 @@
                 step="0.1"
                 value="259.8"
               />
-              <p class="control-help">色相分割の起点（0〜359.9°）</p>
             </div>
 
             <div class="control-field">
@@ -60,9 +59,6 @@
               </div>
               <div class="color-control">
                 <input id="palette-background" type="color" value="#f9faf7" />
-                <div>
-                  <p class="control-help">パレットを囲む背景色</p>
-                </div>
               </div>
             </div>
 
@@ -94,7 +90,6 @@
                 class="curve-editor"
                 id="chroma-curve-editor"
                 data-curve="chroma"
-                aria-describedby="chroma-curve-help"
               >
                 <svg
                   class="curve-plot"
@@ -155,9 +150,6 @@
                 <span>中点 <output id="chroma-curve-middle-value">0.188</output></span>
                 <span>終点 <output id="chroma-curve-end-value">0.188</output></span>
               </div>
-              <p class="control-help" id="chroma-curve-help">
-                ステップ方向のOKLCH C（0〜0.4）。カーブの縦軸は0〜100%で固定されています。
-              </p>
             </div>
 
             <div
@@ -203,7 +195,6 @@
                 id="lightness-curve-editor"
                 data-curve="lightness"
                 data-mode="custom"
-                aria-describedby="lightness-curve-help"
               >
                 <svg
                   class="curve-plot"
@@ -278,13 +269,9 @@
                     max="1"
                     step="0.01"
                     value="0.7"
-                    aria-describedby="lightness-curve-help"
                   />
                 </div>
               </div>
-              <p class="control-help" id="lightness-curve-help">
-                ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。
-              </p>
             </div>
 
             <div class="control-field">
@@ -301,7 +288,6 @@
                 step="1"
                 value="12"
               />
-              <p class="control-help">360°を等分する色相の数</p>
             </div>
 
             <div class="control-field">
@@ -318,7 +304,6 @@
                 step="1"
                 value="12"
               />
-              <p class="control-help">最暗色から最明色までの段階数</p>
             </div>
 
             <div class="control-field">
@@ -335,7 +320,6 @@
                 step="1"
                 value="8"
               />
-              <p class="control-help">色相列とカラーステップの間隔</p>
             </div>
           </div>
 

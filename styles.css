@@ -297,7 +297,6 @@
     border-radius: 0.65rem;
   }
 
-  .control-help,
   .settings-footer {
     color: var(--muted);
     font-size: 0.7rem;

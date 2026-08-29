@@ -47,7 +47,6 @@ const elements = {
   lightnessSCurveControls: document.querySelector("#lightness-s-curve-controls"),
   lightnessSCurveAmount: document.querySelector("#lightness-s-amount"),
   lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
-  lightnessCurveHelp: document.querySelector("#lightness-curve-help"),
   resetButton: document.querySelector("#reset-button"),
   copyShareUrl: document.querySelector("#copy-share-url"),
   compatibilityNote: document.querySelector("#compatibility-note"),
@@ -299,10 +298,6 @@ function updateCurveGraph(curveType) {
     handle.style.top = y + "%";
     handle.setAttribute("aria-label", getCurveLabel(curveType, point));
     handle.setAttribute("aria-orientation", "vertical");
-    handle.setAttribute(
-      "aria-describedby",
-      controls.editor.getAttribute("aria-describedby"),
-    );
     handle.setAttribute("aria-valuemin", formatCurveValue(range.min));
     handle.setAttribute("aria-valuemax", formatCurveValue(range.max));
     handle.setAttribute("aria-valuenow", formatCurveValue(value));
@@ -326,10 +321,6 @@ function syncLightnessCurveControls() {
   elements.lightnessSCurveAmountValue.textContent = formatSCurveAmount(
     state.lightnessSCurve.amount,
   );
-  elements.lightnessCurveHelp.textContent =
-    mode === LIGHTNESS_CURVE_MODES.S
-      ? "ステップ方向のOKLCH L（0〜1）。始点・中点・終点のつまみとS字の強さでカーブを調整できます。"
-      : "ステップ方向のOKLCH L（0〜1）。暗い順を保つため、始点から終点まで単調に増加します。";
   updateRangeProgress(elements.lightnessSCurveAmount);
 }
 
