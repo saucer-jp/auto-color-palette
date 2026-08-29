@@ -33,7 +33,6 @@ const elements = {
   baseHueValue: document.querySelector("#base-hue-value"),
   paletteBackground: document.querySelector("#palette-background"),
   paletteBackgroundValue: document.querySelector("#palette-background-value"),
-  paletteBackgroundCaption: document.querySelector("#palette-background-caption"),
   hueCount: document.querySelector("#hue-count"),
   hueCountValue: document.querySelector("#hue-count-value"),
   stepCount: document.querySelector("#step-count"),
@@ -339,11 +338,10 @@ function syncControls() {
   elements.baseHueValue.textContent = formatDegree(state.baseHue) + "°";
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.paletteBackgroundValue.textContent = state.paletteBackground;
-  elements.paletteBackgroundCaption.textContent = state.paletteBackground;
   elements.hueCount.value = String(state.hueCount);
-  elements.hueCountValue.textContent = state.hueCount + " hues";
+  elements.hueCountValue.textContent = state.hueCount + "色相";
   elements.stepCount.value = String(state.stepCount);
-  elements.stepCountValue.textContent = state.stepCount + " steps";
+  elements.stepCountValue.textContent = state.stepCount + "ステップ";
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
   elements.showGamutWarnings.checked = state.showGamutWarnings;
@@ -400,7 +398,7 @@ function getSwatchAriaLabel(swatch, hex) {
   const columnLabel =
     swatch.dataset.columnType === "grayscale"
       ? "グレースケール"
-      : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "度";
+      : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
   const gamutLabel =
     swatch.dataset.gamutWarning === "true"
       ? "、sRGB色域外のためクリップ"
@@ -457,7 +455,7 @@ function createSwatch(swatchData) {
   hexLabel.textContent = swatchData.hex;
   actionLabel.className = "swatch-action";
   actionLabel.setAttribute("aria-hidden", "true");
-  actionLabel.textContent = "COPY";
+  actionLabel.textContent = "コピー";
   meta.append(hexLabel, actionLabel);
   swatch.append(meta);
 
@@ -481,8 +479,8 @@ function createPaletteColumn(column, columnIndex) {
   label.id = labelId;
   label.textContent =
     column.type === "grayscale"
-      ? "GRAYSCALE"
-      : "HUE " + formatDegree(column.hue) + "°";
+      ? "グレースケール"
+      : "色相 " + formatDegree(column.hue) + "°";
   stack.className = "swatch-stack";
 
   column.swatches.forEach((swatchData) => {
@@ -699,7 +697,7 @@ async function copySwatch(swatch) {
 
   try {
     await writeClipboard(hex);
-    showToast(hex + " をコピーしました", "success");
+    showToast(hex + " をコピーしました。", "success");
   } catch {
     showToast(hex + " をコピーできませんでした。", "error");
   }
@@ -713,7 +711,7 @@ async function copyShareUrl() {
 
   try {
     await writeClipboard(shareUrl);
-    showToast("共有URLをコピーしました", "success");
+    showToast("共有URLをコピーしました。", "success");
   } catch {
     showToast("共有URLをコピーできませんでした。", "error");
   }
@@ -855,7 +853,7 @@ function resetSettings() {
   syncSettingsUrl();
   renderPalette();
   saveSettings();
-  showToast("設定を初期値に戻しました", "success");
+  showToast("設定を初期値に戻しました。", "success");
 }
 
 function bindEvents() {

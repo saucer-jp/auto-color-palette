@@ -606,7 +606,6 @@ export function generatePalette(settings) {
     if (!columns[0]) {
       columns.push({
         type: "grayscale",
-        label: "GRAYSCALE",
         hue: null,
         swatches: [],
       });
@@ -652,7 +651,6 @@ export function generatePalette(settings) {
 
     columns.push({
       type: "hue",
-      label: "HUE " + hue,
       hue,
       hueOffset,
       swatches,

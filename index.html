@@ -6,22 +6,22 @@
     <meta name="color-scheme" content="light dark" />
     <meta
       name="description"
-      content="基準HUEとOKLCHの彩度・明度カーブからカラーパレットを作成します。"
+      content="基準色相とOKLCHの彩度・明度カーブからカラーパレットを作成します。"
     />
-    <title>Auto Color Palette</title>
+    <title>自動カラーパレット</title>
     <link rel="stylesheet" href="./styles.css" />
     <script type="module" src="./app.js"></script>
   </head>
   <body>
     <main class="app-shell">
-      <h1 class="visually-hidden">Auto Color Palette</h1>
+      <h1 class="visually-hidden">自動カラーパレット</h1>
 
       <div class="workspace">
         <aside class="settings-panel" aria-label="パレット設定">
           <div class="panel-heading">
             <div>
-              <p class="section-kicker">SETTINGS</p>
-              <h2>Palette recipe</h2>
+              <p class="section-kicker">設定</p>
+              <h2>パレットレシピ</h2>
             </div>
             <button
               class="reset-button"
@@ -36,7 +36,7 @@
           <div class="control-stack">
             <div class="control-field">
               <div class="field-label-row">
-                <label for="base-hue">Base HUE</label>
+                <label for="base-hue">基準色相</label>
                 <output id="base-hue-value" for="base-hue">259.8°</output>
               </div>
               <input
@@ -53,7 +53,7 @@
 
             <div class="control-field">
               <div class="field-label-row">
-                <label for="palette-background">Palette background</label>
+                <label for="palette-background">パレットの背景色</label>
                 <output id="palette-background-value" for="palette-background">
                   #F9FAF7
                 </output>
@@ -61,7 +61,6 @@
               <div class="color-control">
                 <input id="palette-background" type="color" value="#f9faf7" />
                 <div>
-                  <p class="control-value" id="palette-background-caption">#F9FAF7</p>
                   <p class="control-help">パレットを囲む背景色</p>
                 </div>
               </div>
@@ -71,7 +70,7 @@
               <label class="checkbox-control" for="show-gamut-warnings">
                 <input id="show-gamut-warnings" type="checkbox" checked />
                 <span>
-                  Show gamut warning dots
+                  色域外の警告ドットを表示
                   <span
                     class="gamut-warning-count"
                     id="gamut-warning-count"
@@ -79,7 +78,6 @@
                   >(0)</span>
                 </span>
               </label>
-              <p class="control-help">色域外スウォッチの警告ドットを表示</p>
             </div>
 
             <div
@@ -89,7 +87,7 @@
               aria-labelledby="chroma-curve-label"
             >
               <div class="field-label-row">
-                <span id="chroma-curve-label">Chroma curve</span>
+                <span id="chroma-curve-label">彩度カーブ</span>
                 <output id="chroma-curve-value">OKLCH C</output>
               </div>
               <div
@@ -153,9 +151,9 @@
                 </div>
               </div>
               <div class="curve-point-values" aria-label="彩度カーブの制御点">
-                <span>Start <output id="chroma-curve-start-value">0.188</output></span>
-                <span>Middle <output id="chroma-curve-middle-value">0.188</output></span>
-                <span>End <output id="chroma-curve-end-value">0.188</output></span>
+                <span>始点 <output id="chroma-curve-start-value">0.188</output></span>
+                <span>中点 <output id="chroma-curve-middle-value">0.188</output></span>
+                <span>終点 <output id="chroma-curve-end-value">0.188</output></span>
               </div>
               <p class="control-help" id="chroma-curve-help">
                 ステップ方向のOKLCH C（0〜0.4）。カーブの縦軸は0〜100%で固定されています。
@@ -169,7 +167,7 @@
               aria-labelledby="lightness-curve-label"
             >
               <div class="field-label-row">
-                <span id="lightness-curve-label">Lightness curve</span>
+                <span id="lightness-curve-label">明度カーブ</span>
                 <output id="lightness-curve-value">OKLCH L</output>
               </div>
               <div
@@ -178,7 +176,7 @@
                 aria-labelledby="lightness-curve-mode-label"
               >
                 <span class="curve-mode-label" id="lightness-curve-mode-label">
-                  Curve type
+                  カーブの種類
                 </span>
                 <div class="curve-mode-options">
                   <label class="curve-mode-option">
@@ -188,7 +186,7 @@
                       value="custom"
                       checked
                     />
-                    <span>Custom</span>
+                    <span>カスタム</span>
                   </label>
                   <label class="curve-mode-option">
                     <input
@@ -196,7 +194,7 @@
                       name="lightness-curve-mode"
                       value="s"
                     />
-                    <span>S-curve</span>
+                    <span>S字カーブ</span>
                   </label>
                 </div>
               </div>
@@ -262,14 +260,14 @@
                 </div>
               </div>
               <div class="curve-point-values" aria-label="明度カーブの値">
-                <span>Start <output id="lightness-curve-start-value">0.263</output></span>
-                <span>Middle <output id="lightness-curve-middle-value">0.623</output></span>
-                <span>End <output id="lightness-curve-end-value">0.983</output></span>
+                <span>始点 <output id="lightness-curve-start-value">0.263</output></span>
+                <span>中点 <output id="lightness-curve-middle-value">0.623</output></span>
+                <span>終点 <output id="lightness-curve-end-value">0.983</output></span>
               </div>
               <div class="curve-s-controls" id="lightness-s-curve-controls" hidden>
                 <div class="curve-bound">
                   <div class="field-label-row">
-                    <label for="lightness-s-amount">S strength</label>
+                    <label for="lightness-s-amount">S字の強さ</label>
                     <output id="lightness-s-amount-value" for="lightness-s-amount">+70%</output>
                   </div>
                   <input
@@ -291,8 +289,8 @@
 
             <div class="control-field">
               <div class="field-label-row">
-                <label for="hue-count">Hue count</label>
-                <output id="hue-count-value" for="hue-count">12 hues</output>
+                <label for="hue-count">色相数</label>
+                <output id="hue-count-value" for="hue-count">12色相</output>
               </div>
               <input
                 id="hue-count"
@@ -308,8 +306,8 @@
 
             <div class="control-field">
               <div class="field-label-row">
-                <label for="step-count">Color steps</label>
-                <output id="step-count-value" for="step-count">12 steps</output>
+                <label for="step-count">カラーステップ数</label>
+                <output id="step-count-value" for="step-count">12ステップ</output>
               </div>
               <input
                 id="step-count"
@@ -325,7 +323,7 @@
 
             <div class="control-field">
               <div class="field-label-row">
-                <label for="gap">Grid gap</label>
+                <label for="gap">グリッド間隔</label>
                 <output id="gap-value" for="gap">8px</output>
               </div>
               <input
@@ -342,10 +340,10 @@
           </div>
 
           <div class="recipe-card">
-            <p class="section-kicker">TOKEN LOGIC</p>
-            <p class="recipe-title">Base HUE + C/L curves</p>
+            <p class="section-kicker">トークンの仕組み</p>
+            <p class="recipe-title">基準色相 + 彩度・明度カーブ</p>
             <p class="recipe-description">
-              基準HUEを均等に分割し、共通のOKLCH C/Lカーブから各ステップを生成します。
+              基準色相を均等に分割し、共通の彩度・明度カーブから各ステップを生成します。
             </p>
             <div class="recipe-scale" aria-hidden="true">
               <span class="recipe-scale-dark"></span>

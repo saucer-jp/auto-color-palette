@@ -297,13 +297,6 @@
     border-radius: 0.65rem;
   }
 
-  .control-value {
-    color: var(--text);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-    font-size: 0.82rem;
-    font-weight: 750;
-  }
-
   .control-help,
   .settings-footer {
     color: var(--muted);
