@@ -298,10 +298,9 @@ export function srgbToOklch(hex) {
   };
 }
 
-export function oklchToSrgb(L, C, H) {
-  const hue = (H * Math.PI) / 180;
-  const a = C * Math.cos(hue);
-  const b = C * Math.sin(hue);
+function oklchToSrgbWithHueVector(L, C, cosHue, sinHue) {
+  const a = C * cosHue;
+  const b = C * sinHue;
 
   const lightnessRoot = L + 0.3963377774 * a + 0.2158037573 * b;
   const middleRoot = L - 0.1055613458 * a - 0.0638541728 * b;
@@ -329,6 +328,11 @@ export function oklchToSrgb(L, C, H) {
     g: linearToSrgb(green),
     b: linearToSrgb(blue),
   };
+}
+
+export function oklchToSrgb(L, C, H) {
+  const hue = (H * Math.PI) / 180;
+  return oklchToSrgbWithHueVector(L, C, Math.cos(hue), Math.sin(hue));
 }
 
 function rgbToHex(red, green, blue) {
@@ -444,8 +448,14 @@ function interpolateHermite(left, right, leftSlope, rightSlope, t) {
   );
 }
 
-export function evaluateCurve(curve, progress) {
+function createCurveEvaluator(curve) {
   const values = CURVE_POINTS.map((point) => Number(curve[point]));
+  const slopes = getCurveSlopes(values);
+
+  return (progress) => evaluatePreparedCurve(values, slopes, progress);
+}
+
+function evaluatePreparedCurve(values, slopes, progress) {
   const t = clamp(finiteNumber(progress, 0), 0, 1);
 
   if (t === CURVE_X[0]) {
@@ -457,8 +467,6 @@ export function evaluateCurve(curve, progress) {
   if (t === CURVE_X[2]) {
     return values[2];
   }
-
-  const slopes = getCurveSlopes(values);
 
   if (t < 0.5) {
     return interpolateHermite(
@@ -479,7 +487,11 @@ export function evaluateCurve(curve, progress) {
   );
 }
 
-export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
+export function evaluateCurve(curve, progress) {
+  return createCurveEvaluator(curve)(progress);
+}
+
+function createSCurveEvaluator(curve = DEFAULTS.lightnessSCurve) {
   const source = curve && typeof curve === "object" ? curve : {};
   const start = clamp(
     finiteNumber(source.start, DEFAULTS.lightnessSCurve.start),
@@ -503,17 +515,6 @@ export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
     LIMITS.lightnessSCurveAmount.min,
     LIMITS.lightnessSCurveAmount.max,
   );
-  const t = clamp(finiteNumber(progress, 0), 0, 1);
-
-  if (t === 0) {
-    return lower;
-  }
-  if (t === 0.5) {
-    return middle;
-  }
-  if (t === 1) {
-    return upper;
-  }
 
   const firstDelta = (middle - lower) / 0.5;
   const secondDelta = (upper - middle) / 0.5;
@@ -533,24 +534,42 @@ export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
     lastSlope,
   );
 
-  const value =
-    t < 0.5
-      ? interpolateHermite(
-          lower,
-          middle,
-          firstSlope,
-          middleSlope,
-          t / 0.5,
-        )
-      : interpolateHermite(
-          middle,
-          upper,
-          middleSlope,
-          lastSlope,
-          (t - 0.5) / 0.5,
-        );
+  return (progress) => {
+    const t = clamp(finiteNumber(progress, 0), 0, 1);
 
-  return clamp(value, LIMITS.lightness.min, LIMITS.lightness.max);
+    if (t === 0) {
+      return lower;
+    }
+    if (t === 0.5) {
+      return middle;
+    }
+    if (t === 1) {
+      return upper;
+    }
+
+    const value =
+      t < 0.5
+        ? interpolateHermite(
+            lower,
+            middle,
+            firstSlope,
+            middleSlope,
+            t / 0.5,
+          )
+        : interpolateHermite(
+            middle,
+            upper,
+            middleSlope,
+            lastSlope,
+            (t - 0.5) / 0.5,
+          );
+
+    return clamp(value, LIMITS.lightness.min, LIMITS.lightness.max);
+  };
+}
+
+export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
+  return createSCurveEvaluator(curve)(progress);
 }
 
 export function evaluateLightness(
@@ -576,12 +595,23 @@ export function evaluateChroma(curve, progress) {
 
 export function getSwatchColor(L, C, H) {
   const normalizedHue = wrapHue(finiteNumber(H, 0));
-  const rgb = oklchToSrgb(L, C, normalizedHue);
+  const hue = (normalizedHue * Math.PI) / 180;
+  return createSwatchColor(
+    L,
+    C,
+    normalizedHue,
+    Math.cos(hue),
+    Math.sin(hue),
+  );
+}
+
+function createSwatchColor(L, C, H, cosHue, sinHue) {
+  const rgb = oklchToSrgbWithHueVector(L, C, cosHue, sinHue);
 
   return {
     L,
     C,
-    H: normalizedHue,
+    H,
     hex: rgbToHex(rgb.r, rgb.g, rgb.b),
     isOutOfSrgbGamut: !isSrgbInGamut(rgb),
   };
@@ -589,65 +619,71 @@ export function getSwatchColor(L, C, H) {
 
 export function generatePalette(settings) {
   const columns = [];
+  const stepCount = settings.stepCount;
+  const stepDenominator = Math.max(stepCount - 1, 1);
+  // Lightness and chroma depend only on the row, not on the hue column.
+  const lightnessEvaluator =
+    settings.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S
+      ? createSCurveEvaluator(settings.lightnessSCurve)
+      : createCurveEvaluator(settings.lightnessCurve);
+  const chromaEvaluator = createCurveEvaluator(settings.chromaCurve);
+  const steps = [];
 
-  for (let stepIndex = 0; stepIndex < settings.stepCount; stepIndex += 1) {
-    const progress = stepIndex / Math.max(settings.stepCount - 1, 1);
-    const L = evaluateLightness(
-      settings.lightnessCurve,
+  for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
+    const progress = stepIndex / stepDenominator;
+    steps.push({
       progress,
-      settings.lightnessCurveMode,
-      settings.lightnessSCurve,
-    );
-    const C = evaluateChroma(
-      settings.chromaCurve,
-      progress,
-    );
+      L: clamp(
+        lightnessEvaluator(progress),
+        LIMITS.lightness.min,
+        LIMITS.lightness.max,
+      ),
+      C: clamp(
+        chromaEvaluator(progress),
+        LIMITS.chroma.min,
+        LIMITS.chroma.max,
+      ),
+    });
+  }
 
-    if (!columns[0]) {
-      columns.push({
-        type: "grayscale",
-        hue: null,
-        swatches: [],
+  if (steps.length > 0) {
+    const grayscaleColumn = {
+      type: "grayscale",
+      hue: null,
+      swatches: [],
+    };
+    columns.push(grayscaleColumn);
+
+    steps.forEach(({ progress, L }, stepIndex) => {
+      grayscaleColumn.swatches.push({
+        ...createSwatchColor(L, 0, 0, 1, 0),
+        stepIndex,
+        stepNumber: stepIndex + 1,
+        progress,
+        hueOffset: 0,
+        columnType: "grayscale",
       });
-    }
-
-    columns[0].swatches.push({
-      ...getSwatchColor(L, 0, 0),
-      stepIndex,
-      stepNumber: stepIndex + 1,
-      progress,
-      hueOffset: 0,
-      columnType: "grayscale",
     });
   }
 
   for (let hueIndex = 0; hueIndex < settings.hueCount; hueIndex += 1) {
     const hueOffset = (hueIndex * 360) / settings.hueCount;
     const hue = wrapHue(settings.baseHue + hueOffset);
+    const hueRadians = (hue * Math.PI) / 180;
+    const cosHue = Math.cos(hueRadians);
+    const sinHue = Math.sin(hueRadians);
     const swatches = [];
 
-    for (let stepIndex = 0; stepIndex < settings.stepCount; stepIndex += 1) {
-      const progress = stepIndex / Math.max(settings.stepCount - 1, 1);
-      const L = evaluateLightness(
-        settings.lightnessCurve,
-        progress,
-        settings.lightnessCurveMode,
-        settings.lightnessSCurve,
-      );
-      const C = evaluateChroma(
-        settings.chromaCurve,
-        progress,
-      );
-
+    steps.forEach(({ progress, L, C }, stepIndex) => {
       swatches.push({
-        ...getSwatchColor(L, C, hue),
+        ...createSwatchColor(L, C, hue, cosHue, sinHue),
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,
         hueOffset,
         columnType: "hue",
       });
-    }
+    });
 
     columns.push({
       type: "hue",

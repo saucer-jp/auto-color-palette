@@ -114,6 +114,19 @@ test("palette generation uses absolute hues and grayscale chroma zero", () => {
   assert.ok(palette.columns[0].swatches.every((swatch) => swatch.C === 0));
 });
 
+test("palette generation handles the maximum supported palette size", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    hueCount: 24,
+    stepCount: 30,
+  };
+  const palette = generatePalette(settings);
+
+  assert.equal(palette.totalColors, 750);
+  assert.equal(palette.columns.length, 25);
+  assert.ok(palette.columns.every((column) => column.swatches.length === 30));
+});
+
 test("gamut warning visibility defaults to enabled and accepts explicit booleans", () => {
   assert.equal(createDefaultSettings().showGamutWarnings, true);
   assert.equal(

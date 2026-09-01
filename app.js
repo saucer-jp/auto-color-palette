@@ -91,7 +91,13 @@ colorCanvas.width = 1;
 colorCanvas.height = 1;
 const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
 let toastTimer;
-let renderFrame;
+let paletteRenderFrame = null;
+let saveSettingsTimer = null;
+let paletteCacheKey = null;
+let paletteCache = null;
+let paletteDom = null;
+const gamutCountCache = new WeakMap();
+const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
   return String(Math.round(Number(degree) * 10) / 10);
@@ -183,6 +189,39 @@ function saveSettings() {
   } catch {
     setStorageStatus("この環境では設定を保存できません。", "error");
   }
+}
+
+function scheduleSaveSettings() {
+  window.clearTimeout(saveSettingsTimer);
+  saveSettingsTimer = window.setTimeout(() => {
+    saveSettingsTimer = null;
+    saveSettings();
+  }, 240);
+}
+
+function saveSettingsImmediately() {
+  window.clearTimeout(saveSettingsTimer);
+  saveSettingsTimer = null;
+  saveSettings();
+}
+
+function flushScheduledSave() {
+  if (saveSettingsTimer === null) {
+    return;
+  }
+
+  saveSettingsImmediately();
+}
+
+function schedulePaletteRender() {
+  if (paletteRenderFrame !== null) {
+    return;
+  }
+
+  paletteRenderFrame = window.requestAnimationFrame(() => {
+    paletteRenderFrame = null;
+    renderPalette();
+  });
 }
 
 function updateRangeProgress(input) {
@@ -324,7 +363,7 @@ function syncLightnessCurveControls() {
   updateRangeProgress(elements.lightnessSCurveAmount);
 }
 
-function syncControls() {
+function syncControls({ updateCurveGraphs = true } = {}) {
   elements.baseHue.value = String(state.baseHue);
   elements.baseHueValue.textContent = formatDegree(state.baseHue) + "°";
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
@@ -342,8 +381,10 @@ function syncControls() {
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
   syncLightnessCurveControls();
-  updateCurveGraph("chroma");
-  updateCurveGraph("lightness");
+  if (updateCurveGraphs) {
+    updateCurveGraph("chroma");
+    updateCurveGraph("lightness");
+  }
 }
 
 function readSettingsFromControls() {
@@ -371,18 +412,25 @@ function readSettingsFromControls() {
   );
 }
 
-function applySettings(settings, { persist = true } = {}) {
+function applySettings(
+  settings,
+  { persist = true, updateCurveGraphs = true } = {},
+) {
   Object.assign(state, settings);
-  syncControls();
+  syncControls({ updateCurveGraphs });
   syncSettingsUrl();
   if (persist) {
-    saveSettings();
+    scheduleSaveSettings();
   }
-  renderPalette();
+  schedulePaletteRender();
 }
 
-function renderFromControls() {
-  applySettings(readSettingsFromControls());
+function renderFromControls(input) {
+  applySettings(readSettingsFromControls(), {
+    updateCurveGraphs:
+      input === elements.lightnessSCurveAmount ||
+      elements.lightnessCurveModes.includes(input),
+  });
 }
 
 function getSwatchAriaLabel(swatch, hex) {
@@ -417,29 +465,6 @@ function createSwatch(swatchData) {
   swatch.type = "button";
   swatch.className = "swatch";
   swatch.dataset.role = "swatch";
-  swatch.dataset.fallbackHex = swatchData.hex;
-  swatch.dataset.hue =
-    swatchData.columnType === "grayscale" ? "0" : String(swatchData.H);
-  swatch.dataset.stepNumber = String(swatchData.stepNumber);
-  swatch.dataset.columnType = swatchData.columnType;
-  swatch.dataset.gamutWarning = String(swatchData.isOutOfSrgbGamut);
-  swatch.style.setProperty("--swatch-lightness", formatCssNumber(swatchData.L));
-  swatch.style.setProperty("--swatch-chroma", formatCssNumber(swatchData.C));
-  swatch.style.setProperty("--swatch-hue", formatCssNumber(swatchData.H));
-  swatch.style.setProperty("--fallback-color", swatchData.hex);
-  swatch.style.setProperty(
-    "--swatch-foreground",
-    getReadableTextColor(swatchData.hex),
-  );
-
-  if (swatchData.isOutOfSrgbGamut && state.showGamutWarnings) {
-    const warning = document.createElement("span");
-    warning.className = "swatch-alert";
-    warning.setAttribute("aria-hidden", "true");
-    swatch.append(warning);
-  }
-
-  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, swatchData.hex));
 
   meta.className = "swatch-meta";
   hexLabel.className = "swatch-hex";
@@ -449,8 +474,43 @@ function createSwatch(swatchData) {
   actionLabel.textContent = "コピー";
   meta.append(hexLabel, actionLabel);
   swatch.append(meta);
+  swatchMetadata.set(swatch, { hexLabel, warning: null });
+  updateSwatch(swatch, swatchData);
 
   return swatch;
+}
+
+function updateSwatch(swatch, swatchData) {
+  const metadata = swatchMetadata.get(swatch);
+  const fallbackHex = swatchData.hex;
+
+  swatch.dataset.fallbackHex = fallbackHex;
+  swatch.dataset.hex = fallbackHex;
+  swatch.dataset.renderedHexResolved = "false";
+  swatch.dataset.hue =
+    swatchData.columnType === "grayscale" ? "0" : String(swatchData.H);
+  swatch.dataset.stepNumber = String(swatchData.stepNumber);
+  swatch.dataset.columnType = swatchData.columnType;
+  swatch.dataset.gamutWarning = String(swatchData.isOutOfSrgbGamut);
+  swatch.style.setProperty("--swatch-lightness", formatCssNumber(swatchData.L));
+  swatch.style.setProperty("--swatch-chroma", formatCssNumber(swatchData.C));
+  swatch.style.setProperty("--swatch-hue", formatCssNumber(swatchData.H));
+  swatch.style.setProperty("--fallback-color", fallbackHex);
+  swatch.style.setProperty("--swatch-foreground", getReadableTextColor(fallbackHex));
+  metadata.hexLabel.textContent = fallbackHex;
+  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, fallbackHex));
+
+  if (swatchData.isOutOfSrgbGamut && state.showGamutWarnings) {
+    if (!metadata.warning) {
+      metadata.warning = document.createElement("span");
+      metadata.warning.className = "swatch-alert";
+      metadata.warning.setAttribute("aria-hidden", "true");
+      swatch.append(metadata.warning);
+    }
+  } else if (metadata.warning) {
+    metadata.warning.remove();
+    metadata.warning = null;
+  }
 }
 
 function createPaletteColumn(column, columnIndex) {
@@ -474,13 +534,15 @@ function createPaletteColumn(column, columnIndex) {
       : "色相 " + formatDegree(column.hue) + "°";
   stack.className = "swatch-stack";
 
-  column.swatches.forEach((swatchData) => {
-    stack.append(createSwatch(swatchData));
+  const swatches = column.swatches.map((swatchData) => {
+    const swatch = createSwatch(swatchData);
+    stack.append(swatch);
+    return swatch;
   });
 
   header.append(label);
   section.append(header, stack);
-  return section;
+  return { element: section, label, swatches };
 }
 
 function getReadableTextColor(hex) {
@@ -530,24 +592,52 @@ function cssColorToHex(cssColor) {
   );
 }
 
-function updateRenderedHexes() {
-  if (!supportsOklch) {
+function resolveRenderedHex(swatch) {
+  // CSS gamut mapping is expensive to read back, so resolve it only when the
+  // swatch is about to expose or copy its HEX value.
+  if (
+    !supportsOklch ||
+    swatch.dataset.renderedHexResolved === "true"
+  ) {
     return;
   }
 
-  const swatches = elements.paletteGrid.querySelectorAll('[data-role="swatch"]');
+  swatch.dataset.renderedHexResolved = "true";
+  const renderedColor = getComputedStyle(swatch, "::before").backgroundColor;
+  const renderedHex = cssColorToHex(renderedColor);
+  if (!renderedHex) {
+    return;
+  }
 
-  swatches.forEach((swatch) => {
-    const renderedColor = getComputedStyle(swatch, "::before").backgroundColor;
-    const renderedHex = cssColorToHex(renderedColor);
-    const hex = renderedHex || swatch.dataset.fallbackHex;
-    const hexLabel = swatch.querySelector(".swatch-hex");
+  const metadata = swatchMetadata.get(swatch);
+  swatch.dataset.hex = renderedHex;
+  swatch.style.setProperty(
+    "--swatch-foreground",
+    getReadableTextColor(renderedHex),
+  );
+  metadata.hexLabel.textContent = renderedHex;
+  swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, renderedHex));
+}
 
-    swatch.dataset.hex = hex;
-    swatch.style.setProperty("--swatch-foreground", getReadableTextColor(hex));
-    hexLabel.textContent = hex;
-    swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, hex));
-  });
+function getSwatchFromEvent(event) {
+  const swatch = event.target?.closest?.('[data-role="swatch"]');
+  return swatch && elements.paletteGrid.contains(swatch) ? swatch : null;
+}
+
+function handleSwatchPointerOver(event) {
+  const swatch = getSwatchFromEvent(event);
+  if (!swatch || (event.relatedTarget && swatch.contains(event.relatedTarget))) {
+    return;
+  }
+
+  resolveRenderedHex(swatch);
+}
+
+function handleSwatchFocusIn(event) {
+  const swatch = getSwatchFromEvent(event);
+  if (swatch) {
+    resolveRenderedHex(swatch);
+  }
 }
 
 function updateCompatibilityMessage() {
@@ -565,6 +655,96 @@ function updateGamutWarningCount(gamutCount) {
   elements.gamutWarningCount.textContent = "(" + gamutCount + ")";
 }
 
+function getPaletteCacheKey() {
+  return [
+    state.baseHue,
+    state.chromaCurve.start,
+    state.chromaCurve.middle,
+    state.chromaCurve.end,
+    state.lightnessCurve.start,
+    state.lightnessCurve.middle,
+    state.lightnessCurve.end,
+    state.lightnessCurveMode,
+    state.lightnessSCurve.start,
+    state.lightnessSCurve.middle,
+    state.lightnessSCurve.end,
+    state.lightnessSCurve.amount,
+    state.hueCount,
+    state.stepCount,
+  ].join("|");
+}
+
+function getPaletteForState() {
+  const nextKey = getPaletteCacheKey();
+  if (nextKey !== paletteCacheKey) {
+    paletteCacheKey = nextKey;
+    paletteCache = generatePalette(state);
+  }
+
+  return paletteCache;
+}
+
+function hasSamePaletteShape(palette) {
+  return (
+    paletteDom &&
+    paletteDom.columns.length === palette.columns.length &&
+    paletteDom.columns.every(
+      (column, columnIndex) =>
+        column.swatches.length === palette.columns[columnIndex].swatches.length,
+    )
+  );
+}
+
+function buildPaletteDom(palette) {
+  const fragment = document.createDocumentFragment();
+  const columns = palette.columns.map((column, columnIndex) =>
+    createPaletteColumn(column, columnIndex),
+  );
+
+  columns.forEach((column) => fragment.append(column.element));
+  elements.paletteGrid.replaceChildren(fragment);
+
+  return {
+    columns,
+    palette,
+    showGamutWarnings: state.showGamutWarnings,
+  };
+}
+
+function updatePaletteDom(palette) {
+  palette.columns.forEach((column, columnIndex) => {
+    const columnDom = paletteDom.columns[columnIndex];
+    columnDom.label.textContent =
+      column.type === "grayscale"
+        ? "グレースケール"
+        : "色相 " + formatDegree(column.hue) + "°";
+
+    column.swatches.forEach((swatchData, stepIndex) => {
+      updateSwatch(columnDom.swatches[stepIndex], swatchData);
+    });
+  });
+
+  paletteDom.palette = palette;
+  paletteDom.showGamutWarnings = state.showGamutWarnings;
+}
+
+function getGamutWarningCount(palette) {
+  if (gamutCountCache.has(palette)) {
+    return gamutCountCache.get(palette);
+  }
+
+  let count = 0;
+  palette.columns.forEach((column) => {
+    column.swatches.forEach((swatch) => {
+      if (swatch.isOutOfSrgbGamut) {
+        count += 1;
+      }
+    });
+  });
+  gamutCountCache.set(palette, count);
+  return count;
+}
+
 function getCurvePreviewColors() {
   return [0, 0.5, 1].map((progress) =>
     getSwatchColor(
@@ -576,14 +756,9 @@ function getCurvePreviewColors() {
 }
 
 function renderPalette() {
-  const palette = generatePalette(state);
+  const palette = getPaletteForState();
   const previewColors = getCurvePreviewColors();
-  const fragment = document.createDocumentFragment();
-  const gamutCount = palette.columns.reduce(
-    (count, column) =>
-      count + column.swatches.filter((swatch) => swatch.isOutOfSrgbGamut).length,
-    0,
-  );
+  const gamutCount = getGamutWarningCount(palette);
 
   elements.root.style.setProperty("--palette-background", state.paletteBackground);
   elements.root.style.setProperty("--curve-start-color", previewColors[0].hex);
@@ -596,17 +771,18 @@ function renderPalette() {
   );
   elements.root.style.setProperty("--step-count", String(state.stepCount));
   elements.root.style.setProperty("--palette-gap", state.gap + "px");
-  elements.paletteGrid.replaceChildren();
 
-  palette.columns.forEach((column, columnIndex) => {
-    fragment.append(createPaletteColumn(column, columnIndex));
-  });
+  // Keep the existing nodes when the number of rows and columns is unchanged.
+  if (!hasSamePaletteShape(palette)) {
+    paletteDom = buildPaletteDom(palette);
+  } else if (
+    paletteDom.palette !== palette ||
+    paletteDom.showGamutWarnings !== state.showGamutWarnings
+  ) {
+    updatePaletteDom(palette);
+  }
 
-  elements.paletteGrid.append(fragment);
   updateGamutWarningCount(gamutCount);
-
-  window.cancelAnimationFrame(renderFrame);
-  renderFrame = window.requestAnimationFrame(updateRenderedHexes);
 }
 
 function hideToast() {
@@ -684,6 +860,7 @@ function writeClipboard(text) {
 }
 
 async function copySwatch(swatch) {
+  resolveRenderedHex(swatch);
   const hex = swatch.dataset.hex || swatch.dataset.fallbackHex;
 
   try {
@@ -756,9 +933,9 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
   Object.assign(state, nextSettings);
   syncControls();
   syncSettingsUrl();
-  renderPalette();
+  schedulePaletteRender();
   if (persist) {
-    saveSettings();
+    saveSettingsImmediately();
   }
 }
 
@@ -797,7 +974,7 @@ function handleCurvePointerDown(event) {
     handle.removeEventListener("pointermove", handleCurvePointerMove);
     handle.removeEventListener("pointerup", finishDrag);
     handle.removeEventListener("pointercancel", finishDrag);
-    saveSettings();
+    saveSettingsImmediately();
   };
 
   handle.addEventListener("pointerup", finishDrag, { once: true });
@@ -842,8 +1019,8 @@ function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
   syncControls();
   syncSettingsUrl();
-  renderPalette();
-  saveSettings();
+  schedulePaletteRender();
+  saveSettingsImmediately();
   showToast("設定を初期値に戻しました。", "success");
 }
 
@@ -874,11 +1051,14 @@ function bindEvents() {
   });
 
   elements.paletteGrid.addEventListener("click", (event) => {
-    const swatch = event.target.closest('[data-role="swatch"]');
+    const swatch = getSwatchFromEvent(event);
     if (swatch) {
       void copySwatch(swatch);
     }
   });
+  elements.paletteGrid.addEventListener("pointerover", handleSwatchPointerOver);
+  elements.paletteGrid.addEventListener("focusin", handleSwatchFocusIn);
+  window.addEventListener("pagehide", flushScheduledSave);
 
   elements.toastClose.addEventListener("click", hideToast);
 }
