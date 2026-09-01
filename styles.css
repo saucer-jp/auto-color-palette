@@ -256,6 +256,22 @@
     gap: 0.7rem;
   }
 
+  .color-field {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.8rem;
+  }
+
+  .color-field .field-label-row {
+    min-inline-size: 0;
+    flex: 1 1 auto;
+  }
+
+  .color-field .color-control {
+    flex: 0 0 auto;
+  }
+
   .checkbox-control {
     display: inline-flex;
     align-items: center;
