@@ -42,6 +42,8 @@ const elements = {
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
+  grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
+  grayscalePreview: document.querySelector("#grayscale-preview"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
@@ -92,6 +94,7 @@ const curveElements = {
 const supportsOklch =
   typeof CSS !== "undefined" &&
   CSS.supports("background-color", "oklch(0.5 0.1 180)");
+const isLocalhost = window.location.hostname === "localhost";
 
 const colorCanvas = document.createElement("canvas");
 colorCanvas.width = 1;
@@ -104,6 +107,7 @@ let saveSettingsTimer = null;
 let paletteCacheKey = null;
 let paletteCache = null;
 let paletteDom = null;
+let grayscalePreviewEnabled = false;
 const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
@@ -371,6 +375,7 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
   elements.showGamutWarnings.checked = state.showGamutWarnings;
+  elements.grayscalePreview.checked = grayscalePreviewEnabled;
 
   updateRangeProgress(elements.baseHue);
   updateRangeProgress(elements.hueCount);
@@ -380,6 +385,21 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   if (updateCurveGraphs) {
     updateCurveGraph("chroma");
     updateCurveGraph("lightness");
+  }
+}
+
+function updateGrayscalePreview() {
+  elements.root.toggleAttribute(
+    "data-grayscale-preview",
+    grayscalePreviewEnabled,
+  );
+}
+
+function syncGrayscalePreviewAvailability() {
+  elements.grayscalePreviewSection.hidden = !isLocalhost;
+  if (!isLocalhost) {
+    grayscalePreviewEnabled = false;
+    updateGrayscalePreview();
   }
 }
 
@@ -436,7 +456,7 @@ function getSwatchAriaLabel(swatch, hex) {
       : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
   const gamutLabel =
     swatch.dataset.gamutWarning === "true"
-      ? "、sRGB色域外のためクリップ"
+      ? "、sRGB色域に収めるため彩度を調整"
       : "";
 
   return (
@@ -599,8 +619,8 @@ function cssColorToHex(cssColor) {
 }
 
 function resolveRenderedHex(swatch) {
-  // CSS gamut mapping is expensive to read back, so resolve it only when the
-  // swatch is about to expose or copy its HEX value.
+  // Read back the final CSS color only when the swatch is about to expose or
+  // copy its HEX value, keeping the label aligned with the visible color.
   if (
     !supportsOklch ||
     swatch.dataset.renderedHexResolved === "true"
@@ -653,7 +673,7 @@ function updateCompatibilityMessage() {
   }
 
   elements.compatibilityNote.textContent =
-    "このブラウザではCSS OKLCHが使えないため、同じトークン計算をJavaScriptで表示しています。";
+    "このブラウザではCSS OKLCHが使えませんが、表示色はsRGB HEXで統一しています。";
   elements.compatibilityNote.hidden = false;
 }
 
@@ -1167,6 +1187,12 @@ function bindEvents() {
   elements.showGamutWarnings.addEventListener("change", () => {
     renderFromControls(elements.showGamutWarnings);
   });
+  if (isLocalhost) {
+    elements.grayscalePreview.addEventListener("change", () => {
+      grayscalePreviewEnabled = elements.grayscalePreview.checked;
+      updateGrayscalePreview();
+    });
+  }
 
   elements.paletteGrid.addEventListener("click", (event) => {
     const swatch = getSwatchFromEvent(event);
@@ -1189,9 +1215,11 @@ if (urlSettings) {
   Object.assign(state, storedSettings);
 }
 
+syncGrayscalePreviewAvailability();
 bindEvents();
 updateCompatibilityMessage();
 syncControls();
+updateGrayscalePreview();
 renderPalette();
 syncSettingsUrl();
 saveSettings();

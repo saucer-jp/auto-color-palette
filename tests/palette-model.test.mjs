@@ -12,9 +12,13 @@ import {
   evaluateLightness,
   evaluateSCurve,
   generatePalette,
+  getPerceptualTone,
   getSwatchColor,
   groupPaletteByHue,
+  getSrgbGrayscaleTone,
+  isSrgbInGamut,
   normalizeSettings,
+  oklchToSrgb,
   serializePaletteExport,
 } from "../palette-model.mjs";
 import {
@@ -135,6 +139,250 @@ test("palette generation uses absolute hues and grayscale chroma zero", () => {
   assert.equal(palette.columns[2].hue, 80);
   assert.equal(palette.columns[4].hue, 260);
   assert.ok(palette.columns[0].swatches.every((swatch) => swatch.C === 0));
+});
+
+test("palette generation keeps each row's colored perceptual tone uniform", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    baseHue: 170,
+    hueCount: 10,
+    stepCount: 16,
+  };
+  const palette = generatePalette(settings);
+  const evaluateLightnessForRow = createLightnessEvaluator(
+    settings.lightnessCurve,
+    settings.lightnessCurveMode,
+    settings.lightnessSCurve,
+  );
+  const evaluateChromaForRow = createChromaEvaluator(settings.chromaCurve);
+  const stepDenominator = settings.stepCount - 1;
+  const baselineRanges = [];
+  const matchedRanges = [];
+
+  for (let stepIndex = 0; stepIndex < settings.stepCount; stepIndex += 1) {
+    const progress = stepIndex / stepDenominator;
+    const lightness = evaluateLightnessForRow(progress);
+    const chroma = evaluateChromaForRow(progress);
+    const targetTone = getPerceptualTone(
+      palette.columns[0].swatches[stepIndex].hex,
+    );
+    const baselineTones = palette.columns.slice(1).map((column) =>
+      getPerceptualTone(
+        getSwatchColor(
+          lightness,
+          chroma,
+          settings.baseHue + column.hueOffset,
+        ).hex,
+      ),
+    );
+    const matchedTones = palette.columns.slice(1).map((column) =>
+      getPerceptualTone(column.swatches[stepIndex].hex),
+    );
+
+    baselineRanges.push(
+      Math.max(...baselineTones) - Math.min(...baselineTones),
+    );
+    matchedRanges.push(
+      Math.max(...matchedTones) - Math.min(...matchedTones),
+    );
+
+    matchedTones.forEach((tone) => {
+      assert.ok(
+        Math.abs(tone - targetTone) <= 0.002,
+        `${tone} should be close to the row target ${targetTone}`,
+      );
+    });
+  }
+
+  const baselineMaximum = Math.max(...baselineRanges);
+  const matchedMaximum = Math.max(...matchedRanges);
+  const baselineMean =
+    baselineRanges.reduce((sum, value) => sum + value, 0) /
+    baselineRanges.length;
+  const matchedMean =
+    matchedRanges.reduce((sum, value) => sum + value, 0) /
+    matchedRanges.length;
+
+  assert.ok(baselineMaximum > 0.05);
+  assert.ok(matchedMaximum <= 0.004);
+  assert.ok(matchedMean < baselineMean / 10);
+});
+
+test("grayscale tone remains a diagnostic sRGB channel-weighted metric", () => {
+  assert.ok(Math.abs(getSrgbGrayscaleTone("#FF0000") - 0.2126) < 1e-9);
+  assert.ok(Math.abs(getSrgbGrayscaleTone("#00FF00") - 0.7152) < 1e-9);
+  assert.ok(Math.abs(getSrgbGrayscaleTone("#0000FF") - 0.0722) < 1e-9);
+});
+
+test("colored tone uses perceptual OKLab lightness", () => {
+  assert.ok(Math.abs(getPerceptualTone("#FF0000") - 0.6279553606) < 1e-9);
+  assert.ok(Math.abs(getPerceptualTone("#00FF00") - 0.8664396115) < 1e-9);
+  assert.ok(Math.abs(getPerceptualTone("#0000FF") - 0.4520137184) < 1e-9);
+});
+
+test("tone-matched hue colors stay in sRGB for consistent rendering", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    baseHue: 170,
+    hueCount: 10,
+    stepCount: 16,
+  };
+  const palette = generatePalette(settings);
+  const hueSwatches = palette.columns
+    .slice(1)
+    .flatMap((column) => column.swatches);
+
+  hueSwatches.forEach((swatch) => {
+    const rgb = oklchToSrgb(
+      Number(swatch.L.toFixed(6)),
+      Number(swatch.C.toFixed(6)),
+      Number(swatch.H.toFixed(6)),
+    );
+
+    assert.ok(isSrgbInGamut(rgb));
+    assert.ok(
+      Object.values(rgb).every((channel) => channel >= 0 && channel <= 1),
+    );
+  });
+});
+
+test("reference high-chroma settings keep each rendered row aligned", () => {
+  const settings = normalizeSettings({
+    version: 5,
+    baseHue: 170,
+    chromaCurve: { start: 0.124, middle: 0.31, end: 0.082 },
+    lightnessCurve: { start: 0.196, middle: 0.474, end: 0.983 },
+    lightnessCurveMode: LIGHTNESS_CURVE_MODES.CUSTOM,
+    lightnessSCurve: {
+      start: 0.263,
+      middle: 0.623,
+      end: 0.983,
+      amount: 0.7,
+    },
+    paletteBackground: "#000000",
+    hueCount: 10,
+    stepCount: 16,
+    gap: 6,
+    showGamutWarnings: false,
+  });
+  const palette = generatePalette(settings);
+  const hueColumns = palette.columns.slice(1);
+  const rowRanges = palette.columns[0].swatches.map((grayscaleSwatch, index) => {
+    const targetTone = getPerceptualTone(grayscaleSwatch.hex);
+    const tones = hueColumns.map((column) =>
+      getPerceptualTone(column.swatches[index].hex),
+    );
+
+    tones.forEach((tone) => {
+      assert.ok(
+        Math.abs(tone - targetTone) <= 0.002,
+        `${tone} should be close to the row target ${targetTone}`,
+      );
+    });
+
+    return Math.max(...tones) - Math.min(...tones);
+  });
+
+  assert.ok(Math.max(...rowRanges) <= 0.004);
+});
+
+test("user reference settings keep rendered sRGB rows aligned", () => {
+  const settings = parseSettingsFromUrl(
+    "?settings=1&baseHue=182.6&chromaStart=0.124&chromaMiddle=0.257&chromaEnd=0.082" +
+      "&lightnessStart=0.196&lightnessMiddle=0.485&lightnessEnd=0.983" +
+      "&lightnessCurveMode=custom&lightnessSStart=0.263&lightnessSMiddle=0.623" +
+      "&lightnessSEnd=0.983&lightnessSAmount=0.7&paletteBackground=%23000000" +
+      "&hueCount=24&stepCount=30&gap=0&showGamutWarnings=0",
+  );
+  const palette = generatePalette(settings);
+  const hueColumns = palette.columns.slice(1);
+  const rowRanges = palette.columns[0].swatches.map((grayscaleSwatch, index) => {
+    const targetTone = getPerceptualTone(grayscaleSwatch.hex);
+    const tones = hueColumns.map((column) =>
+      getPerceptualTone(column.swatches[index].hex),
+    );
+
+    tones.forEach((tone) => {
+      assert.ok(
+        Math.abs(tone - targetTone) <= 0.002,
+        `${tone} should be close to the row target ${targetTone}`,
+      );
+    });
+
+    return Math.max(...tones) - Math.min(...tones);
+  });
+
+  assert.ok(Math.max(...rowRanges) <= 0.004);
+});
+
+test("user reference settings align colored tone and reduce grayscale steps as a consequence", () => {
+  const settings = parseSettingsFromUrl(
+    "?settings=1&baseHue=182.6&chromaStart=0.124&chromaMiddle=0.257&chromaEnd=0.082" +
+      "&lightnessStart=0.196&lightnessMiddle=0.485&lightnessEnd=0.983" +
+      "&lightnessCurveMode=custom&lightnessSStart=0.263&lightnessSMiddle=0.623" +
+      "&lightnessSEnd=0.983&lightnessSAmount=0.7&paletteBackground=%23000000" +
+      "&hueCount=24&stepCount=30&gap=0&showGamutWarnings=0",
+  );
+  const palette = generatePalette(settings);
+  const hueColumns = palette.columns.slice(1);
+  const evaluateLightnessForRow = createLightnessEvaluator(
+    settings.lightnessCurve,
+    settings.lightnessCurveMode,
+    settings.lightnessSCurve,
+  );
+  const evaluateChromaForRow = createChromaEvaluator(settings.chromaCurve);
+  const stepDenominator = settings.stepCount - 1;
+  const baselineGrayscaleRanges = [];
+  const matchedGrayscaleRanges = [];
+  const matchedPerceptualRanges = [];
+
+  palette.columns[0].swatches.forEach((grayscaleSwatch, rowIndex) => {
+    const progress = rowIndex / stepDenominator;
+    const lightness = evaluateLightnessForRow(progress);
+    const chroma = evaluateChromaForRow(progress);
+    const baselineGrayscaleTones = hueColumns.map((column) =>
+      getSrgbGrayscaleTone(
+        getSwatchColor(
+          lightness,
+          chroma,
+          settings.baseHue + column.hueOffset,
+        ).hex,
+      ),
+    );
+    const matchedGrayscaleTones = hueColumns.map((column) =>
+      getSrgbGrayscaleTone(column.swatches[rowIndex].hex),
+    );
+    const targetPerceptualTone = getPerceptualTone(grayscaleSwatch.hex);
+    const matchedPerceptualTones = hueColumns.map((column) =>
+      getPerceptualTone(column.swatches[rowIndex].hex),
+    );
+
+    baselineGrayscaleRanges.push(
+      Math.max(...baselineGrayscaleTones) -
+        Math.min(...baselineGrayscaleTones),
+    );
+    matchedGrayscaleRanges.push(
+      Math.max(...matchedGrayscaleTones) -
+        Math.min(...matchedGrayscaleTones),
+    );
+    matchedPerceptualRanges.push(
+      Math.max(...matchedPerceptualTones) -
+        Math.min(...matchedPerceptualTones),
+    );
+
+    matchedPerceptualTones.forEach((tone) => {
+      assert.ok(
+        Math.abs(tone - targetPerceptualTone) <= 0.002,
+        `${tone} should be close to the row target ${targetPerceptualTone}`,
+      );
+    });
+  });
+
+  assert.ok(Math.max(...matchedPerceptualRanges) <= 0.004);
+  assert.ok(
+    Math.max(...matchedGrayscaleRanges) <
+      Math.max(...baselineGrayscaleRanges),
+  );
 });
 
 test("palette generation handles the maximum supported palette size", () => {

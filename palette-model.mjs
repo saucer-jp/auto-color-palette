@@ -43,6 +43,14 @@ const CURVE_X = Object.freeze([0, 0.5, 1]);
 const CURVE_PRECISION = 1000;
 const HUE_PRECISION = 10;
 const SRGB_EPSILON = 0.00001;
+// Keep six-decimal OKLCH metadata inside the sRGB boundary as well as the
+// rendered HEX value. The margin is intentionally small so it does not
+// noticeably reduce the requested chroma.
+const SRGB_OUTPUT_GAMUT_MARGIN = 0.0001;
+// 22 iterations are enough to make the tone correction precise while keeping
+// the largest supported palette responsive during slider updates.
+const TONE_MATCH_ITERATIONS = 22;
+const TONE_MATCH_EPSILON = 1e-9;
 
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -261,6 +269,70 @@ function hexToRgb(hex) {
   };
 }
 
+function getSrgbOklabLightness(rgb) {
+  const red = srgbToLinear(clamp(rgb.r, 0, 1) * 255);
+  const green = srgbToLinear(clamp(rgb.g, 0, 1) * 255);
+  const blue = srgbToLinear(clamp(rgb.b, 0, 1) * 255);
+
+  const lightness =
+    0.4122214708 * red + 0.5363325363 * green + 0.0514459929 * blue;
+  const middle =
+    0.2119034982 * red + 0.6806995451 * green + 0.1073969566 * blue;
+  const short =
+    0.0883024619 * red + 0.2817188376 * green + 0.6299787005 * blue;
+
+  return clamp(
+    0.2104542553 * Math.cbrt(lightness) +
+      0.793617785 * Math.cbrt(middle) -
+      0.0040720468 * Math.cbrt(short),
+    0,
+    1,
+  );
+}
+
+export function getSrgbLightness(hex) {
+  const rgb = hexToRgb(hex);
+  return getSrgbOklabLightness({
+    r: rgb.r / 255,
+    g: rgb.g / 255,
+    b: rgb.b / 255,
+  });
+}
+
+export function getPerceptualTone(hex) {
+  return getSrgbLightness(hex);
+}
+
+// This metric is intentionally diagnostic only. It approximates the direct
+// sRGB channel weighting used by the CSS grayscale filter; palette generation
+// must not optimize against it because it discards the colored appearance.
+function getSrgbGrayscaleToneFromRgb(rgb) {
+  const red = clamp(rgb.r, 0, 1);
+  const green = clamp(rgb.g, 0, 1);
+  const blue = clamp(rgb.b, 0, 1);
+
+  return clamp(
+    0.2126 * red + 0.7152 * green + 0.0722 * blue,
+    0,
+    1,
+  );
+}
+
+export function getSrgbGrayscaleTone(hex) {
+  const rgb = hexToRgb(hex);
+  return getSrgbGrayscaleToneFromRgb({
+    r: rgb.r / 255,
+    g: rgb.g / 255,
+    b: rgb.b / 255,
+  });
+}
+
+// Keep the older name as a diagnostic alias for callers that used it to
+// inspect grayscale output. It is not used by palette generation.
+export function getGrayscaleTone(hex) {
+  return getSrgbGrayscaleTone(hex);
+}
+
 export function srgbToOklch(hex) {
   const rgb = hexToRgb(hex);
   const red = srgbToLinear(rgb.r);
@@ -356,9 +428,129 @@ export function isSrgbInGamut(rgb) {
   );
 }
 
+function isSrgbSafeForOutput(rgb) {
+  return [rgb.r, rgb.g, rgb.b].every(
+    (channel) =>
+      channel >= SRGB_OUTPUT_GAMUT_MARGIN &&
+      channel <= 1 - SRGB_OUTPUT_GAMUT_MARGIN,
+  );
+}
+
 export function oklchToHex(L, C, H) {
   const rgb = oklchToSrgb(L, C, H);
   return rgbToHex(rgb.r, rgb.g, rgb.b);
+}
+
+function getOklchPerceptualTone(L, C, cosHue, sinHue) {
+  return getSrgbOklabLightness(
+    oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
+  );
+}
+
+function isToneReachable(targetTone, C, cosHue, sinHue) {
+  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
+  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
+
+  return (
+    targetTone >= darkestTone - TONE_MATCH_EPSILON &&
+    targetTone <= lightestTone + TONE_MATCH_EPSILON
+  );
+}
+
+function solveLightnessForTone(targetTone, C, cosHue, sinHue) {
+  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
+  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
+
+  if (targetTone <= darkestTone + TONE_MATCH_EPSILON) {
+    return 0;
+  }
+  if (targetTone >= lightestTone - TONE_MATCH_EPSILON) {
+    return 1;
+  }
+
+  let lower = 0;
+  let upper = 1;
+
+  for (let iteration = 0; iteration < TONE_MATCH_ITERATIONS; iteration += 1) {
+    const middle = (lower + upper) / 2;
+    const tone = getOklchPerceptualTone(middle, C, cosHue, sinHue);
+
+    if (tone < targetTone) {
+      lower = middle;
+    } else {
+      upper = middle;
+    }
+  }
+
+  return (lower + upper) / 2;
+}
+
+function solveToneAtChroma(targetTone, C, cosHue, sinHue) {
+  if (!isToneReachable(targetTone, C, cosHue, sinHue)) {
+    return null;
+  }
+
+  const L = solveLightnessForTone(targetTone, C, cosHue, sinHue);
+
+  return {
+    L,
+    C,
+    rgb: oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
+  };
+}
+
+function matchOklchTone(targetTone, requestedChroma, cosHue, sinHue) {
+  const normalizedChroma = clamp(
+    requestedChroma,
+    LIMITS.chroma.min,
+    LIMITS.chroma.max,
+  );
+  const requestedColor = solveToneAtChroma(
+    targetTone,
+    normalizedChroma,
+    cosHue,
+    sinHue,
+  );
+
+  if (requestedColor && isSrgbSafeForOutput(requestedColor.rgb)) {
+    return {
+      ...requestedColor,
+      wasGamutAdjusted: false,
+    };
+  }
+
+  // Some combinations of high chroma, extreme lightness, and hue cannot
+  // produce the row's target tone inside sRGB. Reduce chroma only in that
+  // case, keeping the most colorful tone-matched color that is possible.
+  let lower = LIMITS.chroma.min;
+  let upper = normalizedChroma;
+  let bestColor = solveToneAtChroma(targetTone, lower, cosHue, sinHue);
+
+  for (
+    let iteration = 0;
+    iteration < TONE_MATCH_ITERATIONS;
+    iteration += 1
+  ) {
+    const middle = (lower + upper) / 2;
+    const candidate = solveToneAtChroma(
+      targetTone,
+      middle,
+      cosHue,
+      sinHue,
+    );
+
+    if (candidate && isSrgbSafeForOutput(candidate.rgb)) {
+      lower = middle;
+      bestColor = candidate;
+    } else {
+      upper = middle;
+    }
+  }
+
+  return {
+    ...bestColor,
+    wasGamutAdjusted: lower < normalizedChroma - TONE_MATCH_EPSILON,
+  };
 }
 
 function sign(value) {
@@ -630,12 +822,36 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
   };
 }
 
+function createToneMatchedSwatchColor(
+  C,
+  H,
+  cosHue,
+  sinHue,
+  targetTone,
+) {
+  const matchedColor = matchOklchTone(targetTone, C, cosHue, sinHue);
+
+  return {
+    ...createSwatchColor(
+      matchedColor.L,
+      matchedColor.C,
+      H,
+      cosHue,
+      sinHue,
+    ),
+    // The generated color is kept in sRGB, so this flag indicates that the
+    // requested tone/chroma combination needed gamut adjustment.
+    isOutOfSrgbGamut: matchedColor.wasGamutAdjusted,
+  };
+}
+
 export function generatePalette(settings) {
   const columns = [];
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
-  // Lightness and chroma depend only on the row, not on the hue column.
+  // The curves provide each row's target. Hue columns compensate their
+  // colored, rendered sRGB OKLab lightness against the neutral reference.
   const lightnessEvaluator = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -646,10 +862,12 @@ export function generatePalette(settings) {
 
   for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
     const progress = stepIndex / stepDenominator;
+    const lightness = lightnessEvaluator(progress);
     steps.push({
       progress,
-      L: lightnessEvaluator(progress),
+      L: lightness,
       C: chromaEvaluator(progress),
+      targetTone: getPerceptualTone(oklchToHex(lightness, 0, 0)),
     });
   }
 
@@ -685,9 +903,15 @@ export function generatePalette(settings) {
     const sinHue = Math.sin(hueRadians);
     const swatches = [];
 
-    steps.forEach(({ progress, L, C }, stepIndex) => {
+    steps.forEach(({ progress, C, targetTone }, stepIndex) => {
       const swatch = {
-        ...createSwatchColor(L, C, hue, cosHue, sinHue),
+        ...createToneMatchedSwatchColor(
+          C,
+          hue,
+          cosHue,
+          sinHue,
+          targetTone,
+        ),
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,

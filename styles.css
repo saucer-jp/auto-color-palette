@@ -294,6 +294,10 @@
     gap: 1.45rem;
   }
 
+  .settings-section[hidden] {
+    display: none;
+  }
+
   .settings-section > .control-field {
     grid-column: 1 / -1;
   }
@@ -787,6 +791,10 @@
     background: var(--surface-raised);
   }
 
+  html[data-grayscale-preview] body {
+    filter: grayscale(1);
+  }
+
   .compatibility-note {
     grid-row: 1;
     padding-block-end: 0.8rem;
@@ -876,20 +884,9 @@
     content: "";
   }
 
-  @supports (background-color: oklch(0.5 0.1 180)) {
-    .swatch::before {
-      background-color: oklch(
-        var(--swatch-lightness)
-        var(--swatch-chroma)
-        var(--swatch-hue)
-      );
-    }
-  }
-
-  @supports not (background-color: oklch(0.5 0.1 180)) {
-    .swatch::before {
-      background-color: var(--fallback-color);
-    }
+  /* Keep the visible result in the same sRGB space used by the tone solver. */
+  .swatch::before {
+    background-color: var(--fallback-color);
   }
 
   .swatch-alert {
