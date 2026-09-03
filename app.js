@@ -6,7 +6,6 @@ import {
   createDefaultSettings,
   createLightnessEvaluator,
   generatePalette,
-  getSwatchColor,
   serializePaletteExport,
   normalizeHex,
   normalizeSettings,
@@ -817,27 +816,10 @@ function updateGamutWarningVisibility() {
   paletteDom.showGamutWarnings = state.showGamutWarnings;
 }
 
-function getCurvePreviewColors() {
-  const lightnessEvaluator = createCurveEvaluatorForState("lightness");
-  const chromaEvaluator = createCurveEvaluatorForState("chroma");
-
-  return [0, 0.5, 1].map((progress) =>
-    getSwatchColor(
-      lightnessEvaluator(progress),
-      chromaEvaluator(progress),
-      state.baseHue,
-    ),
-  );
-}
-
 function renderPalette() {
   const palette = getPaletteForState();
-  const previewColors = getCurvePreviewColors();
 
   elements.root.style.setProperty("--palette-background", state.paletteBackground);
-  elements.root.style.setProperty("--curve-start-color", previewColors[0].hex);
-  elements.root.style.setProperty("--curve-middle-color", previewColors[1].hex);
-  elements.root.style.setProperty("--curve-end-color", previewColors[2].hex);
   elements.root.style.setProperty("--hue-count", String(state.hueCount));
   elements.root.style.setProperty(
     "--palette-column-count",

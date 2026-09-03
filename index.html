@@ -23,22 +23,68 @@
               <p class="section-kicker">設定</p>
               <h2>パレットレシピ</h2>
             </div>
-            <button
-              class="export-trigger"
-              id="export-palette-button"
-              type="button"
-              aria-label="JSONをエクスポート"
-              aria-haspopup="dialog"
-              aria-controls="export-dialog"
-              aria-expanded="false"
-            >
-              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
-                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v3.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V15" />
-              </svg>
-            </button>
+            <div class="panel-actions">
+              <button
+                class="panel-action share-trigger"
+                id="copy-share-url"
+                type="button"
+                aria-label="共有URLをコピー"
+                title="共有URLをコピー"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l1.42-1.42a5 5 0 0 0-7.07-7.07L10.5 6.5" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-1.42 1.42a5 5 0 0 0 7.07 7.07L13.5 17.5" />
+                </svg>
+              </button>
+              <button
+                class="panel-action export-trigger"
+                id="export-palette-button"
+                type="button"
+                aria-label="JSONをエクスポート"
+                aria-haspopup="dialog"
+                aria-controls="export-dialog"
+                aria-expanded="false"
+              >
+                <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v3.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V15" />
+                </svg>
+              </button>
+            </div>
           </div>
 
           <div class="control-stack">
+            <div class="settings-section">
+              <div class="control-field color-field">
+                <div class="field-label-row">
+                  <label for="palette-background">パレットの背景色</label>
+                  <output id="palette-background-value" for="palette-background">
+                    #F9FAF7
+                  </output>
+                </div>
+                <div class="color-control">
+                  <input id="palette-background" type="color" value="#f9faf7" />
+                </div>
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="gap">グリッド間隔</label>
+                  <output id="gap-value" for="gap">8px</output>
+                </div>
+                <input
+                  id="gap"
+                  class="range-input"
+                  type="range"
+                  min="0"
+                  max="40"
+                  step="1"
+                  value="8"
+                />
+              </div>
+            </div>
+
             <div class="settings-section">
               <div class="control-field">
                 <div class="field-label-row">
@@ -55,37 +101,41 @@
                   value="259.8"
                 />
               </div>
-
-            </div>
-
-            <div class="settings-section">
-              <div class="control-field color-field">
-                <div class="field-label-row">
-                  <label for="palette-background">パレットの背景色</label>
-                  <output id="palette-background-value" for="palette-background">
-                    #F9FAF7
-                  </output>
-                </div>
-                <div class="color-control">
-                  <input id="palette-background" type="color" value="#f9faf7" />
-                </div>
-              </div>
-
             </div>
 
             <div class="settings-section">
               <div class="control-field">
-                <label class="checkbox-control" for="show-gamut-warnings">
-                  <input id="show-gamut-warnings" type="checkbox" checked />
-                  <span>
-                    色域外の警告ドットを表示
-                    <span
-                      class="gamut-warning-count"
-                      id="gamut-warning-count"
-                      aria-live="polite"
-                    >(0)</span>
-                  </span>
-                </label>
+                <div class="field-label-row">
+                  <label for="hue-count">色相数</label>
+                  <output id="hue-count-value" for="hue-count">12色相</output>
+                </div>
+                <input
+                  id="hue-count"
+                  class="range-input"
+                  type="range"
+                  min="2"
+                  max="24"
+                  step="1"
+                  value="12"
+                />
+              </div>
+            </div>
+
+            <div class="settings-section">
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="step-count">カラーステップ数</label>
+                  <output id="step-count-value" for="step-count">12ステップ</output>
+                </div>
+                <input
+                  id="step-count"
+                  class="range-input"
+                  type="range"
+                  min="5"
+                  max="30"
+                  step="1"
+                  value="12"
+                />
               </div>
             </div>
 
@@ -165,7 +215,6 @@
                   <span>終点 <output id="chroma-curve-end-value">0.188</output></span>
                 </div>
               </div>
-
             </div>
 
             <div class="settings-section">
@@ -294,71 +343,34 @@
 
             <div class="settings-section">
               <div class="control-field">
-                <div class="field-label-row">
-                  <label for="hue-count">色相数</label>
-                  <output id="hue-count-value" for="hue-count">12色相</output>
-                </div>
-                <input
-                  id="hue-count"
-                  class="range-input"
-                  type="range"
-                  min="2"
-                  max="24"
-                  step="1"
-                  value="12"
-                />
-              </div>
-
-            </div>
-
-            <div class="settings-section">
-              <div class="control-field">
-                <div class="field-label-row">
-                  <label for="step-count">カラーステップ数</label>
-                  <output id="step-count-value" for="step-count">12ステップ</output>
-                </div>
-                <input
-                  id="step-count"
-                  class="range-input"
-                  type="range"
-                  min="5"
-                  max="30"
-                  step="1"
-                  value="12"
-                />
-              </div>
-
-            </div>
-
-            <div class="settings-section">
-              <div class="control-field">
-                <div class="field-label-row">
-                  <label for="gap">グリッド間隔</label>
-                  <output id="gap-value" for="gap">8px</output>
-                </div>
-                <input
-                  id="gap"
-                  class="range-input"
-                  type="range"
-                  min="0"
-                  max="40"
-                  step="1"
-                  value="8"
-                />
+                <label class="checkbox-control" for="show-gamut-warnings">
+                  <input id="show-gamut-warnings" type="checkbox" checked />
+                  <span>
+                    色域外の警告ドットを表示
+                    <span
+                      class="gamut-warning-count"
+                      id="gamut-warning-count"
+                      aria-live="polite"
+                    >(0)</span>
+                  </span>
+                </label>
               </div>
             </div>
-          </div>
 
-          <div class="recipe-card">
-            <p class="section-kicker">トークンの仕組み</p>
-            <p class="recipe-title">基準色相 + 彩度・明度カーブ</p>
-            <p class="recipe-description">
-              基準色相を均等に分割し、共通の彩度・明度カーブから各ステップを生成します。
-            </p>
-            <div class="recipe-scale" aria-hidden="true">
-              <span class="recipe-scale-dark"></span>
-              <span class="recipe-scale-mid"></span>
-              <span class="recipe-scale-light"></span>
+            <div class="settings-danger-zone">
+              <p class="section-kicker">注意</p>
+              <p class="danger-description" id="reset-settings-description">
+                現在の設定をすべて初期値に戻します。
+              </p>
+              <button
+                class="reset-button"
+                id="reset-button"
+                type="button"
+                aria-describedby="reset-settings-description"
+              >
+                <span aria-hidden="true">↺</span>
+                <span>設定を初期値に戻す</span>
+              </button>
             </div>
           </div>
 
@@ -366,29 +378,9 @@
             <p>
               各スウォッチをクリックすると、描画された色のHEX値をコピーします。
             </p>
-            <button class="share-button" id="copy-share-url" type="button">
-              <span aria-hidden="true">↗</span>
-              共有URLをコピー
-            </button>
             <p class="storage-status" id="storage-status">
               設定はURLに反映され、このブラウザにも保存されます。
             </p>
-          </div>
-
-          <div class="settings-danger-zone">
-            <p class="section-kicker">注意</p>
-            <p class="danger-description" id="reset-settings-description">
-              現在の設定をすべて初期値に戻します。
-            </p>
-            <button
-              class="reset-button"
-              id="reset-button"
-              type="button"
-              aria-describedby="reset-settings-description"
-            >
-              <span aria-hidden="true">↺</span>
-              <span>設定を初期値に戻す</span>
-            </button>
           </div>
         </aside>
 

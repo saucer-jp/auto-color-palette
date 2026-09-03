@@ -52,9 +52,6 @@
     --danger-light: #ad3e43;
     --danger-dark: #ff9a94;
     --danger: var(--danger-light);
-    --curve-start-color: #00027d;
-    --curve-middle-color: #3b82f6;
-    --curve-end-color: #c5ecff;
     --palette-background: #f9faf7;
     --palette-gap: 8px;
     --hue-count: 12;
@@ -179,7 +176,6 @@
 
   .panel-heading,
   .settings-section,
-  .recipe-card,
   .settings-footer,
   .settings-danger-zone {
     padding-inline: var(--panel-padding);
@@ -198,9 +194,15 @@
     line-height: 1.1;
   }
 
-  .export-trigger {
-    display: grid;
+  .panel-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
     flex: 0 0 auto;
+  }
+
+  .panel-action {
+    display: grid;
     place-items: center;
     inline-size: 2.5rem;
     block-size: 2.5rem;
@@ -216,7 +218,7 @@
       transform 160ms ease;
   }
 
-  .export-trigger svg {
+  .panel-action svg {
     inline-size: 1.25rem;
     block-size: 1.25rem;
     fill: none;
@@ -226,7 +228,7 @@
     stroke-width: 1.8;
   }
 
-  .export-trigger:hover {
+  .panel-action:hover {
     border-color: var(--accent);
     background: var(--accent);
     color: var(--surface);
@@ -264,6 +266,7 @@
 
   .settings-danger-zone {
     display: grid;
+    grid-column: 1 / -1;
     gap: 0.55rem;
     margin-block-start: 1.8rem;
     padding-block-start: 1rem;
@@ -286,8 +289,7 @@
   }
 
   .reset-button:focus-visible,
-  .export-trigger:focus-visible,
-  .share-button:focus-visible,
+  .panel-action:focus-visible,
   .dialog-close-button:focus-visible,
   .export-copy-button:focus-visible,
   .range-input:focus-visible,
@@ -639,79 +641,11 @@
     font-size: 0.68rem;
   }
 
-  .recipe-card {
-    display: grid;
-    gap: 0.55rem;
-    margin-block-start: auto;
-    padding-block-start: 1.45rem;
-    border-block-start: 1px solid var(--settings-divider);
-  }
-
-  .recipe-title {
-    color: var(--text);
-    font-size: 0.82rem;
-    font-weight: 750;
-  }
-
-  .recipe-description {
-    color: var(--muted);
-    font-size: 0.72rem;
-    line-height: 1.65;
-  }
-
-  .recipe-scale {
-    display: grid;
-    grid-template-columns: 1fr 1fr 1fr;
-    block-size: 0.4rem;
-    overflow: hidden;
-    margin-block-start: 0.35rem;
-    border-radius: 999px;
-  }
-
-  .recipe-scale-dark {
-    background: var(--curve-start-color);
-  }
-
-  .recipe-scale-mid {
-    background: var(--curve-middle-color);
-  }
-
-  .recipe-scale-light {
-    background: var(--curve-end-color);
-  }
-
   .settings-footer {
     margin-block-start: 1.8rem;
     padding-block-start: 1rem;
     border-block-start: 1px solid var(--settings-divider);
     line-height: 1.6;
-  }
-
-  .share-button {
-    display: inline-flex;
-    align-items: center;
-    justify-content: center;
-    gap: 0.45rem;
-    inline-size: 100%;
-    min-block-size: 3rem;
-    margin-block-start: 0.9rem;
-    padding-block: 0.65rem;
-    padding-inline: 0.8rem;
-    border: 0;
-    border-radius: 0.7rem;
-    background: var(--accent);
-    color: var(--surface);
-    font-size: 0.74rem;
-    font-weight: 750;
-    letter-spacing: 0.03em;
-    transition:
-      filter 160ms ease,
-      transform 160ms ease;
-  }
-
-  .share-button:hover {
-    filter: brightness(1.08);
-    transform: translateY(-1px);
   }
 
   .storage-status {
@@ -1205,11 +1139,6 @@
       padding-block-start: 1.2rem;
     }
 
-    .recipe-card {
-      margin-block-start: 1.8rem;
-      padding-block-start: 1rem;
-    }
-
     .preview-panel {
       min-block-size: min(70dvh, 42rem);
     }
@@ -1252,8 +1181,7 @@
 
   @media (prefers-reduced-motion: reduce) {
     .reset-button,
-    .export-trigger,
-    .share-button,
+    .panel-action,
     .export-copy-button,
     .swatch,
     .swatch-meta,
@@ -1264,7 +1192,6 @@
 
   @media (prefers-contrast: more) {
     .settings-section + .settings-section,
-    .recipe-card,
     .settings-footer,
     .settings-danger-zone {
       border-block-start-color: var(--text);
@@ -1273,7 +1200,6 @@
 
   @media (forced-colors: active) {
     .settings-section + .settings-section,
-    .recipe-card,
     .settings-footer,
     .settings-danger-zone,
     .export-dialog,
@@ -1282,7 +1208,7 @@
       border-color: GrayText;
     }
 
-    .export-trigger,
+    .panel-action,
     .reset-button {
       border-color: ButtonText;
       background: ButtonFace;
@@ -1295,7 +1221,7 @@
       color: HighlightText;
     }
 
-    .export-trigger:hover,
+    .panel-action:hover,
     .export-copy-button:hover {
       border-color: Highlight;
       background: Highlight;
