@@ -59,7 +59,6 @@ const elements = {
   copyShareUrl: document.querySelector("#copy-share-url"),
   compatibilityNote: document.querySelector("#compatibility-note"),
   paletteGrid: document.querySelector("#palette-grid"),
-  storageStatus: document.querySelector("#storage-status"),
   toast: document.querySelector("#toast"),
   toastMessage: document.querySelector("#toast-message"),
   toastClose: document.querySelector(".toast-close"),
@@ -128,16 +127,6 @@ function getCurveKey(curveType) {
   return curveType + "Curve";
 }
 
-function setStorageStatus(message, kind) {
-  elements.storageStatus.textContent = message;
-
-  if (kind) {
-    elements.storageStatus.dataset.kind = kind;
-  } else {
-    delete elements.storageStatus.dataset.kind;
-  }
-}
-
 function syncSettingsUrl() {
   const nextUrl = getSettingsUrl(state, window.location.href);
 
@@ -193,9 +182,8 @@ function saveSettings() {
 
   try {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    setStorageStatus("設定をこのブラウザに保存しました。", "success");
   } catch {
-    setStorageStatus("この環境では設定を保存できません。", "error");
+    // Keep the palette usable when localStorage is unavailable.
   }
 }
 

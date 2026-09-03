@@ -176,7 +176,6 @@
 
   .panel-heading,
   .settings-section,
-  .settings-footer,
   .settings-danger-zone {
     padding-inline: var(--panel-padding);
   }
@@ -267,25 +266,9 @@
   .settings-danger-zone {
     display: grid;
     grid-column: 1 / -1;
-    gap: 0.55rem;
     margin-block-start: 1.8rem;
     padding-block-start: 1rem;
     border-block-start: 1px solid var(--settings-divider);
-  }
-
-  .settings-danger-zone .section-kicker {
-    color: var(--danger);
-  }
-
-  .danger-description {
-    color: var(--muted);
-    font-size: 0.72rem;
-    line-height: 1.6;
-    text-wrap: pretty;
-  }
-
-  .settings-danger-zone .reset-button {
-    margin-block-start: 0.35rem;
   }
 
   .reset-button:focus-visible,
@@ -411,11 +394,6 @@
   .color-control input[type="color"]::-webkit-color-swatch {
     border: 0;
     border-radius: 0.65rem;
-  }
-
-  .settings-footer {
-    color: var(--muted);
-    font-size: 0.7rem;
   }
 
   .range-input {
@@ -639,25 +617,6 @@
 
   .curve-bound .field-label-row label {
     font-size: 0.68rem;
-  }
-
-  .settings-footer {
-    margin-block-start: 1.8rem;
-    padding-block-start: 1rem;
-    border-block-start: 1px solid var(--settings-divider);
-    line-height: 1.6;
-  }
-
-  .storage-status {
-    margin-block-start: 0.45rem;
-  }
-
-  .storage-status[data-kind="success"] {
-    color: var(--success);
-  }
-
-  .storage-status[data-kind="error"] {
-    color: var(--danger);
   }
 
   .export-dialog {
@@ -1192,7 +1151,6 @@
 
   @media (prefers-contrast: more) {
     .settings-section + .settings-section,
-    .settings-footer,
     .settings-danger-zone {
       border-block-start-color: var(--text);
     }
@@ -1200,7 +1158,6 @@
 
   @media (forced-colors: active) {
     .settings-section + .settings-section,
-    .settings-footer,
     .settings-danger-zone,
     .export-dialog,
     .export-json-preview {
