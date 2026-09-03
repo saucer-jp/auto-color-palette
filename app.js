@@ -42,6 +42,7 @@ const elements = {
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
+  grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
   grayscalePreview: document.querySelector("#grayscale-preview"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
@@ -93,6 +94,7 @@ const curveElements = {
 const supportsOklch =
   typeof CSS !== "undefined" &&
   CSS.supports("background-color", "oklch(0.5 0.1 180)");
+const isLocalhost = window.location.hostname === "localhost";
 
 const colorCanvas = document.createElement("canvas");
 colorCanvas.width = 1;
@@ -391,6 +393,14 @@ function updateGrayscalePreview() {
     "data-grayscale-preview",
     grayscalePreviewEnabled,
   );
+}
+
+function syncGrayscalePreviewAvailability() {
+  elements.grayscalePreviewSection.hidden = !isLocalhost;
+  if (!isLocalhost) {
+    grayscalePreviewEnabled = false;
+    updateGrayscalePreview();
+  }
 }
 
 function readSettingsFromControls() {
@@ -1177,10 +1187,12 @@ function bindEvents() {
   elements.showGamutWarnings.addEventListener("change", () => {
     renderFromControls(elements.showGamutWarnings);
   });
-  elements.grayscalePreview.addEventListener("change", () => {
-    grayscalePreviewEnabled = elements.grayscalePreview.checked;
-    updateGrayscalePreview();
-  });
+  if (isLocalhost) {
+    elements.grayscalePreview.addEventListener("change", () => {
+      grayscalePreviewEnabled = elements.grayscalePreview.checked;
+      updateGrayscalePreview();
+    });
+  }
 
   elements.paletteGrid.addEventListener("click", (event) => {
     const swatch = getSwatchFromEvent(event);
@@ -1203,6 +1215,7 @@ if (urlSettings) {
   Object.assign(state, storedSettings);
 }
 
+syncGrayscalePreviewAvailability();
 bindEvents();
 updateCompatibilityMessage();
 syncControls();

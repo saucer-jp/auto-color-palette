@@ -294,6 +294,10 @@
     gap: 1.45rem;
   }
 
+  .settings-section[hidden] {
+    display: none;
+  }
+
   .settings-section > .control-field {
     grid-column: 1 / -1;
   }
