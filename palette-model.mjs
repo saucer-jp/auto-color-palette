@@ -299,10 +299,38 @@ export function getSrgbLightness(hex) {
   });
 }
 
-// Keep the existing export name for callers that use the grayscale-tone
-// terminology; the value now represents perceptual tone after sRGB display.
-export function getGrayscaleTone(hex) {
+export function getPerceptualTone(hex) {
   return getSrgbLightness(hex);
+}
+
+// This metric is intentionally diagnostic only. It approximates the direct
+// sRGB channel weighting used by the CSS grayscale filter; palette generation
+// must not optimize against it because it discards the colored appearance.
+function getSrgbGrayscaleToneFromRgb(rgb) {
+  const red = clamp(rgb.r, 0, 1);
+  const green = clamp(rgb.g, 0, 1);
+  const blue = clamp(rgb.b, 0, 1);
+
+  return clamp(
+    0.2126 * red + 0.7152 * green + 0.0722 * blue,
+    0,
+    1,
+  );
+}
+
+export function getSrgbGrayscaleTone(hex) {
+  const rgb = hexToRgb(hex);
+  return getSrgbGrayscaleToneFromRgb({
+    r: rgb.r / 255,
+    g: rgb.g / 255,
+    b: rgb.b / 255,
+  });
+}
+
+// Keep the older name as a diagnostic alias for callers that used it to
+// inspect grayscale output. It is not used by palette generation.
+export function getGrayscaleTone(hex) {
+  return getSrgbGrayscaleTone(hex);
 }
 
 export function srgbToOklch(hex) {
@@ -413,15 +441,15 @@ export function oklchToHex(L, C, H) {
   return rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-function getOklchGrayscaleTone(L, C, cosHue, sinHue) {
+function getOklchPerceptualTone(L, C, cosHue, sinHue) {
   return getSrgbOklabLightness(
     oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
   );
 }
 
 function isToneReachable(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchGrayscaleTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchGrayscaleTone(1, C, cosHue, sinHue);
+  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
+  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
 
   return (
     targetTone >= darkestTone - TONE_MATCH_EPSILON &&
@@ -430,8 +458,8 @@ function isToneReachable(targetTone, C, cosHue, sinHue) {
 }
 
 function solveLightnessForTone(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchGrayscaleTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchGrayscaleTone(1, C, cosHue, sinHue);
+  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
+  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
 
   if (targetTone <= darkestTone + TONE_MATCH_EPSILON) {
     return 0;
@@ -445,7 +473,7 @@ function solveLightnessForTone(targetTone, C, cosHue, sinHue) {
 
   for (let iteration = 0; iteration < TONE_MATCH_ITERATIONS; iteration += 1) {
     const middle = (lower + upper) / 2;
-    const tone = getOklchGrayscaleTone(middle, C, cosHue, sinHue);
+    const tone = getOklchPerceptualTone(middle, C, cosHue, sinHue);
 
     if (tone < targetTone) {
       lower = middle;
@@ -822,8 +850,8 @@ export function generatePalette(settings) {
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
-  // The curves provide each row's target. Hue columns compensate OKLCH L
-  // against the rendered sRGB grayscale tone below.
+  // The curves provide each row's target. Hue columns compensate their
+  // colored, rendered sRGB OKLab lightness against the neutral reference.
   const lightnessEvaluator = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -839,7 +867,7 @@ export function generatePalette(settings) {
       progress,
       L: lightness,
       C: chromaEvaluator(progress),
-      targetTone: getGrayscaleTone(oklchToHex(lightness, 0, 0)),
+      targetTone: getPerceptualTone(oklchToHex(lightness, 0, 0)),
     });
   }
 
