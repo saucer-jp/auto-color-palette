@@ -23,14 +23,6 @@
               <p class="section-kicker">設定</p>
               <h2>パレットレシピ</h2>
             </div>
-            <button
-              class="reset-button"
-              id="reset-button"
-              type="button"
-              aria-label="設定を初期値に戻す"
-            >
-              <span aria-hidden="true">↺</span>
-            </button>
           </div>
 
           <div class="control-stack">
@@ -368,6 +360,22 @@
             <p class="storage-status" id="storage-status">
               設定はURLに反映され、このブラウザにも保存されます。
             </p>
+          </div>
+
+          <div class="settings-danger-zone">
+            <p class="section-kicker">注意</p>
+            <p class="danger-description" id="reset-settings-description">
+              現在の設定をすべて初期値に戻します。
+            </p>
+            <button
+              class="reset-button"
+              id="reset-button"
+              type="button"
+              aria-describedby="reset-settings-description"
+            >
+              <span aria-hidden="true">↺</span>
+              <span>設定を初期値に戻す</span>
+            </button>
           </div>
         </aside>
 

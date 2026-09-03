@@ -180,7 +180,8 @@
   .panel-heading,
   .settings-section,
   .recipe-card,
-  .settings-footer {
+  .settings-footer,
+  .settings-danger-zone {
     padding-inline: var(--panel-padding);
   }
 
@@ -198,26 +199,55 @@
   }
 
   .reset-button {
-    display: grid;
-    place-items: center;
-    inline-size: 2.2rem;
-    block-size: 2.2rem;
-    padding: 0;
-    border: 0;
-    border-radius: 50%;
-    background: var(--soft);
-    color: var(--muted);
-    font-size: 1.2rem;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.45rem;
+    inline-size: 100%;
+    min-block-size: 3rem;
+    padding-block: 0.65rem;
+    padding-inline: 0.8rem;
+    border: 1px solid var(--danger);
+    border-radius: 0.7rem;
+    background: transparent;
+    color: var(--danger);
+    font-size: 0.74rem;
+    font-weight: 750;
+    letter-spacing: 0.03em;
     transition:
       background-color 160ms ease,
+      border-color 160ms ease,
       color 160ms ease,
       transform 160ms ease;
   }
 
   .reset-button:hover {
-    background: var(--accent);
-    color: #fff;
-    transform: rotate(-24deg);
+    background: var(--danger);
+    color: var(--surface);
+    transform: translateY(-1px);
+  }
+
+  .settings-danger-zone {
+    display: grid;
+    gap: 0.55rem;
+    margin-block-start: 1.8rem;
+    padding-block-start: 1rem;
+    border-block-start: 1px solid var(--settings-divider);
+  }
+
+  .settings-danger-zone .section-kicker {
+    color: var(--danger);
+  }
+
+  .danger-description {
+    color: var(--muted);
+    font-size: 0.72rem;
+    line-height: 1.6;
+    text-wrap: pretty;
+  }
+
+  .settings-danger-zone .reset-button {
+    margin-block-start: 0.35rem;
   }
 
   .reset-button:focus-visible,
@@ -1027,7 +1057,8 @@
   @media (prefers-contrast: more) {
     .settings-section + .settings-section,
     .recipe-card,
-    .settings-footer {
+    .settings-footer,
+    .settings-danger-zone {
       border-block-start-color: var(--text);
     }
   }
@@ -1035,8 +1066,21 @@
   @media (forced-colors: active) {
     .settings-section + .settings-section,
     .recipe-card,
-    .settings-footer {
+    .settings-footer,
+    .settings-danger-zone {
       border-block-start-color: GrayText;
+    }
+
+    .reset-button {
+      border-color: ButtonText;
+      background: ButtonFace;
+      color: ButtonText;
+    }
+
+    .reset-button:hover {
+      border-color: Highlight;
+      background: Highlight;
+      color: HighlightText;
     }
 
     .swatch:focus-visible {
