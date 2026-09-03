@@ -4,7 +4,9 @@ import test from "node:test";
 import {
   DEFAULTS,
   LIGHTNESS_CURVE_MODES,
+  createChromaEvaluator,
   createDefaultSettings,
+  createLightnessEvaluator,
   evaluateChroma,
   evaluateCurve,
   evaluateLightness,
@@ -97,6 +99,25 @@ test("chroma interpolation supports a peak and stays within its range", () => {
   assert.ok(maximum >= 0.3);
 });
 
+test("prepared curve evaluators match scalar curve evaluation", () => {
+  const chromaCurve = { start: 0.04, middle: 0.28, end: 0.09 };
+  const lightnessCurve = { start: 0.21, middle: 0.58, end: 0.91 };
+  const evaluateChromaPrepared = createChromaEvaluator(chromaCurve);
+  const evaluateLightnessPrepared = createLightnessEvaluator(lightnessCurve);
+
+  for (let index = 0; index <= 20; index += 1) {
+    const progress = index / 20;
+    assert.equal(
+      evaluateChromaPrepared(progress),
+      evaluateChroma(chromaCurve, progress),
+    );
+    assert.equal(
+      evaluateLightnessPrepared(progress),
+      evaluateLightness(lightnessCurve, progress),
+    );
+  }
+});
+
 test("palette generation uses absolute hues and grayscale chroma zero", () => {
   const settings = {
     ...createDefaultSettings(),
@@ -125,6 +146,13 @@ test("palette generation handles the maximum supported palette size", () => {
   assert.equal(palette.totalColors, 750);
   assert.equal(palette.columns.length, 25);
   assert.ok(palette.columns.every((column) => column.swatches.length === 30));
+  const gamutWarningCount = palette.columns.reduce(
+    (total, column) =>
+      total +
+      column.swatches.filter((swatch) => swatch.isOutOfSrgbGamut).length,
+    0,
+  );
+  assert.equal(palette.gamutWarningCount, gamutWarningCount);
 });
 
 test("gamut warning visibility defaults to enabled and accepts explicit booleans", () => {

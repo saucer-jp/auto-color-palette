@@ -2,9 +2,9 @@ import {
   LIMITS,
   LIGHTNESS_CURVE_MODES,
   clamp,
+  createChromaEvaluator,
   createDefaultSettings,
-  evaluateChroma,
-  evaluateLightness,
+  createLightnessEvaluator,
   generatePalette,
   getSwatchColor,
   normalizeHex,
@@ -96,7 +96,6 @@ let saveSettingsTimer = null;
 let paletteCacheKey = null;
 let paletteCache = null;
 let paletteDom = null;
-const gamutCountCache = new WeakMap();
 const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
@@ -290,21 +289,22 @@ function getCurveLabel(curveType, point) {
   return curveLabel + "カーブの" + pointLabel;
 }
 
-function getCurveSampleValue(curveType, progress) {
-  const curve = state[getCurveKey(curveType)];
+function createCurveEvaluatorForState(curveType) {
+  if (curveType === "chroma") {
+    return createChromaEvaluator(state.chromaCurve);
+  }
 
-  return curveType === "chroma"
-    ? evaluateChroma(curve, progress)
-    : evaluateLightness(
-        curve,
-        progress,
-        state.lightnessCurveMode,
-        state.lightnessSCurve,
-      );
+  return createLightnessEvaluator(
+    state.lightnessCurve,
+    state.lightnessCurveMode,
+    state.lightnessSCurve,
+  );
 }
 
 function updateCurveGraph(curveType) {
   const controls = curveElements[curveType];
+  const evaluate = createCurveEvaluatorForState(curveType);
+  const range = getCurveRange(curveType);
   const isLightnessSCurve =
     curveType === "lightness" &&
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
@@ -317,7 +317,7 @@ function updateCurveGraph(curveType) {
 
   for (let index = 0; index <= sampleCount; index += 1) {
     const progress = index / sampleCount;
-    const value = getCurveSampleValue(curveType, progress);
+    const value = evaluate(progress);
     const x = progress * 100;
     const y = curveValueToY(curveType, value) * 100;
     pathData.push((index === 0 ? "M" : "L") + " " + x + " " + y);
@@ -330,7 +330,6 @@ function updateCurveGraph(curveType) {
     const value = getCurveValue(curveType, point);
     const x = point === "start" ? 0 : point === "middle" ? 50 : 100;
     const y = curveValueToY(curveType, value) * 100;
-    const range = getCurveRange(curveType);
 
     handle.hidden = false;
     handle.style.left = x + "%";
@@ -474,10 +473,30 @@ function createSwatch(swatchData) {
   actionLabel.textContent = "コピー";
   meta.append(hexLabel, actionLabel);
   swatch.append(meta);
-  swatchMetadata.set(swatch, { hexLabel, warning: null });
+  swatchMetadata.set(swatch, {
+    hexLabel,
+    warning: null,
+    isOutOfSrgbGamut: false,
+  });
   updateSwatch(swatch, swatchData);
 
   return swatch;
+}
+
+function syncSwatchWarning(swatch, showGamutWarnings) {
+  const metadata = swatchMetadata.get(swatch);
+
+  if (metadata.isOutOfSrgbGamut && showGamutWarnings) {
+    if (!metadata.warning) {
+      metadata.warning = document.createElement("span");
+      metadata.warning.className = "swatch-alert";
+      metadata.warning.setAttribute("aria-hidden", "true");
+      swatch.append(metadata.warning);
+    }
+  } else if (metadata.warning) {
+    metadata.warning.remove();
+    metadata.warning = null;
+  }
 }
 
 function updateSwatch(swatch, swatchData) {
@@ -492,6 +511,7 @@ function updateSwatch(swatch, swatchData) {
   swatch.dataset.stepNumber = String(swatchData.stepNumber);
   swatch.dataset.columnType = swatchData.columnType;
   swatch.dataset.gamutWarning = String(swatchData.isOutOfSrgbGamut);
+  metadata.isOutOfSrgbGamut = swatchData.isOutOfSrgbGamut;
   swatch.style.setProperty("--swatch-lightness", formatCssNumber(swatchData.L));
   swatch.style.setProperty("--swatch-chroma", formatCssNumber(swatchData.C));
   swatch.style.setProperty("--swatch-hue", formatCssNumber(swatchData.H));
@@ -499,18 +519,7 @@ function updateSwatch(swatch, swatchData) {
   swatch.style.setProperty("--swatch-foreground", getReadableTextColor(fallbackHex));
   metadata.hexLabel.textContent = fallbackHex;
   swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, fallbackHex));
-
-  if (swatchData.isOutOfSrgbGamut && state.showGamutWarnings) {
-    if (!metadata.warning) {
-      metadata.warning = document.createElement("span");
-      metadata.warning.className = "swatch-alert";
-      metadata.warning.setAttribute("aria-hidden", "true");
-      swatch.append(metadata.warning);
-    }
-  } else if (metadata.warning) {
-    metadata.warning.remove();
-    metadata.warning = null;
-  }
+  syncSwatchWarning(swatch, state.showGamutWarnings);
 }
 
 function createPaletteColumn(column, columnIndex) {
@@ -728,28 +737,27 @@ function updatePaletteDom(palette) {
   paletteDom.showGamutWarnings = state.showGamutWarnings;
 }
 
-function getGamutWarningCount(palette) {
-  if (gamutCountCache.has(palette)) {
-    return gamutCountCache.get(palette);
+function updateGamutWarningVisibility() {
+  if (!paletteDom) {
+    return;
   }
 
-  let count = 0;
-  palette.columns.forEach((column) => {
+  paletteDom.columns.forEach((column) => {
     column.swatches.forEach((swatch) => {
-      if (swatch.isOutOfSrgbGamut) {
-        count += 1;
-      }
+      syncSwatchWarning(swatch, state.showGamutWarnings);
     });
   });
-  gamutCountCache.set(palette, count);
-  return count;
+  paletteDom.showGamutWarnings = state.showGamutWarnings;
 }
 
 function getCurvePreviewColors() {
+  const lightnessEvaluator = createCurveEvaluatorForState("lightness");
+  const chromaEvaluator = createCurveEvaluatorForState("chroma");
+
   return [0, 0.5, 1].map((progress) =>
     getSwatchColor(
-      getCurveSampleValue("lightness", progress),
-      getCurveSampleValue("chroma", progress),
+      lightnessEvaluator(progress),
+      chromaEvaluator(progress),
       state.baseHue,
     ),
   );
@@ -758,7 +766,6 @@ function getCurvePreviewColors() {
 function renderPalette() {
   const palette = getPaletteForState();
   const previewColors = getCurvePreviewColors();
-  const gamutCount = getGamutWarningCount(palette);
 
   elements.root.style.setProperty("--palette-background", state.paletteBackground);
   elements.root.style.setProperty("--curve-start-color", previewColors[0].hex);
@@ -775,14 +782,13 @@ function renderPalette() {
   // Keep the existing nodes when the number of rows and columns is unchanged.
   if (!hasSamePaletteShape(palette)) {
     paletteDom = buildPaletteDom(palette);
-  } else if (
-    paletteDom.palette !== palette ||
-    paletteDom.showGamutWarnings !== state.showGamutWarnings
-  ) {
+  } else if (paletteDom.palette !== palette) {
     updatePaletteDom(palette);
+  } else if (paletteDom.showGamutWarnings !== state.showGamutWarnings) {
+    updateGamutWarningVisibility();
   }
 
-  updateGamutWarningCount(gamutCount);
+  updateGamutWarningCount(palette.gamutWarningCount);
 }
 
 function hideToast() {

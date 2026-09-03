@@ -568,6 +568,27 @@ function createSCurveEvaluator(curve = DEFAULTS.lightnessSCurve) {
   };
 }
 
+export function createLightnessEvaluator(
+  curve,
+  mode = LIGHTNESS_CURVE_MODES.CUSTOM,
+  sCurve = DEFAULTS.lightnessSCurve,
+) {
+  const evaluator =
+    mode === LIGHTNESS_CURVE_MODES.S
+      ? createSCurveEvaluator(sCurve)
+      : createCurveEvaluator(curve);
+
+  return (progress) =>
+    clamp(evaluator(progress), LIMITS.lightness.min, LIMITS.lightness.max);
+}
+
+export function createChromaEvaluator(curve) {
+  const evaluator = createCurveEvaluator(curve);
+
+  return (progress) =>
+    clamp(evaluator(progress), LIMITS.chroma.min, LIMITS.chroma.max);
+}
+
 export function evaluateSCurve(curve = DEFAULTS.lightnessSCurve, progress) {
   return createSCurveEvaluator(curve)(progress);
 }
@@ -578,19 +599,11 @@ export function evaluateLightness(
   mode = LIGHTNESS_CURVE_MODES.CUSTOM,
   sCurve = DEFAULTS.lightnessSCurve,
 ) {
-  if (mode === LIGHTNESS_CURVE_MODES.S) {
-    return evaluateSCurve(sCurve, progress);
-  }
-
-  return clamp(evaluateCurve(curve, progress), 0, 1);
+  return createLightnessEvaluator(curve, mode, sCurve)(progress);
 }
 
 export function evaluateChroma(curve, progress) {
-  return clamp(
-    evaluateCurve(curve, progress),
-    LIMITS.chroma.min,
-    LIMITS.chroma.max,
-  );
+  return createChromaEvaluator(curve)(progress);
 }
 
 export function getSwatchColor(L, C, H) {
@@ -619,30 +632,24 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
 
 export function generatePalette(settings) {
   const columns = [];
+  let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
   // Lightness and chroma depend only on the row, not on the hue column.
-  const lightnessEvaluator =
-    settings.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S
-      ? createSCurveEvaluator(settings.lightnessSCurve)
-      : createCurveEvaluator(settings.lightnessCurve);
-  const chromaEvaluator = createCurveEvaluator(settings.chromaCurve);
+  const lightnessEvaluator = createLightnessEvaluator(
+    settings.lightnessCurve,
+    settings.lightnessCurveMode,
+    settings.lightnessSCurve,
+  );
+  const chromaEvaluator = createChromaEvaluator(settings.chromaCurve);
   const steps = [];
 
   for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
     const progress = stepIndex / stepDenominator;
     steps.push({
       progress,
-      L: clamp(
-        lightnessEvaluator(progress),
-        LIMITS.lightness.min,
-        LIMITS.lightness.max,
-      ),
-      C: clamp(
-        chromaEvaluator(progress),
-        LIMITS.chroma.min,
-        LIMITS.chroma.max,
-      ),
+      L: lightnessEvaluator(progress),
+      C: chromaEvaluator(progress),
     });
   }
 
@@ -655,14 +662,18 @@ export function generatePalette(settings) {
     columns.push(grayscaleColumn);
 
     steps.forEach(({ progress, L }, stepIndex) => {
-      grayscaleColumn.swatches.push({
+      const swatch = {
         ...createSwatchColor(L, 0, 0, 1, 0),
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,
         hueOffset: 0,
         columnType: "grayscale",
-      });
+      };
+      if (swatch.isOutOfSrgbGamut) {
+        gamutWarningCount += 1;
+      }
+      grayscaleColumn.swatches.push(swatch);
     });
   }
 
@@ -675,14 +686,18 @@ export function generatePalette(settings) {
     const swatches = [];
 
     steps.forEach(({ progress, L, C }, stepIndex) => {
-      swatches.push({
+      const swatch = {
         ...createSwatchColor(L, C, hue, cosHue, sinHue),
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,
         hueOffset,
         columnType: "hue",
-      });
+      };
+      if (swatch.isOutOfSrgbGamut) {
+        gamutWarningCount += 1;
+      }
+      swatches.push(swatch);
     });
 
     columns.push({
@@ -696,5 +711,6 @@ export function generatePalette(settings) {
   return {
     columns,
     totalColors: (settings.hueCount + 1) * settings.stepCount,
+    gamutWarningCount,
   };
 }
