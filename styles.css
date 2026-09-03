@@ -876,20 +876,9 @@
     content: "";
   }
 
-  @supports (background-color: oklch(0.5 0.1 180)) {
-    .swatch::before {
-      background-color: oklch(
-        var(--swatch-lightness)
-        var(--swatch-chroma)
-        var(--swatch-hue)
-      );
-    }
-  }
-
-  @supports not (background-color: oklch(0.5 0.1 180)) {
-    .swatch::before {
-      background-color: var(--fallback-color);
-    }
+  /* Keep the visible result in the same sRGB space used by the tone solver. */
+  .swatch::before {
+    background-color: var(--fallback-color);
   }
 
   .swatch-alert {

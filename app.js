@@ -436,7 +436,7 @@ function getSwatchAriaLabel(swatch, hex) {
       : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
   const gamutLabel =
     swatch.dataset.gamutWarning === "true"
-      ? "、sRGB色域外のためクリップ"
+      ? "、sRGB色域に収めるため彩度を調整"
       : "";
 
   return (
@@ -599,8 +599,8 @@ function cssColorToHex(cssColor) {
 }
 
 function resolveRenderedHex(swatch) {
-  // CSS gamut mapping is expensive to read back, so resolve it only when the
-  // swatch is about to expose or copy its HEX value.
+  // Read back the final CSS color only when the swatch is about to expose or
+  // copy its HEX value, keeping the label aligned with the visible color.
   if (
     !supportsOklch ||
     swatch.dataset.renderedHexResolved === "true"
@@ -653,7 +653,7 @@ function updateCompatibilityMessage() {
   }
 
   elements.compatibilityNote.textContent =
-    "このブラウザではCSS OKLCHが使えないため、同じトークン計算をJavaScriptで表示しています。";
+    "このブラウザではCSS OKLCHが使えませんが、表示色はsRGB HEXで統一しています。";
   elements.compatibilityNote.hidden = false;
 }
 
