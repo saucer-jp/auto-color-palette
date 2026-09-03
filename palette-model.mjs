@@ -714,3 +714,41 @@ export function generatePalette(settings) {
     gamutWarningCount,
   };
 }
+
+function formatExportHue(hue) {
+  const roundedHue = Math.round(Number(hue) * HUE_PRECISION) / HUE_PRECISION;
+  return Object.is(roundedHue, -0) ? 0 : roundedHue;
+}
+
+export function groupPaletteByHue(palette) {
+  const exportPalette = {
+    grayscale: [],
+    hues: [],
+  };
+
+  if (!palette || !Array.isArray(palette.columns)) {
+    return exportPalette;
+  }
+
+  palette.columns.forEach((column) => {
+    const colors = Array.isArray(column.swatches)
+      ? column.swatches.map((swatch) => swatch.hex)
+      : [];
+
+    if (column.type === "grayscale" || column.hue === null) {
+      exportPalette.grayscale.push(...colors);
+      return;
+    }
+
+    exportPalette.hues.push({
+      hue: formatExportHue(column.hue),
+      colors,
+    });
+  });
+
+  return exportPalette;
+}
+
+export function serializePaletteExport(palette) {
+  return JSON.stringify(groupPaletteByHue(palette), null, 2);
+}

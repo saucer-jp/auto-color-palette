@@ -13,7 +13,9 @@ import {
   evaluateSCurve,
   generatePalette,
   getSwatchColor,
+  groupPaletteByHue,
   normalizeSettings,
+  serializePaletteExport,
 } from "../palette-model.mjs";
 import {
   SETTINGS_URL_VERSION,
@@ -153,6 +155,34 @@ test("palette generation handles the maximum supported palette size", () => {
     0,
   );
   assert.equal(palette.gamutWarningCount, gamutWarningCount);
+});
+
+test("palette export groups colors by hue and preserves column order", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    baseHue: 350,
+    hueCount: 4,
+    stepCount: 3,
+  };
+  const palette = generatePalette(settings);
+  const exportData = groupPaletteByHue(palette);
+
+  assert.deepEqual(Object.keys(exportData), ["grayscale", "hues"]);
+  assert.equal(exportData.grayscale.length, 3);
+  assert.deepEqual(
+    exportData.hues.map((group) => group.hue),
+    [350, 80, 170, 260],
+  );
+  assert.deepEqual(
+    exportData.grayscale,
+    palette.columns[0].swatches.map((swatch) => swatch.hex),
+  );
+  assert.deepEqual(
+    exportData.hues[0].colors,
+    palette.columns[1].swatches.map((swatch) => swatch.hex),
+  );
+
+  assert.deepEqual(JSON.parse(serializePaletteExport(palette)), exportData);
 });
 
 test("gamut warning visibility defaults to enabled and accepts explicit booleans", () => {

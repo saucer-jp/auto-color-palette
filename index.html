@@ -23,6 +23,19 @@
               <p class="section-kicker">設定</p>
               <h2>パレットレシピ</h2>
             </div>
+            <button
+              class="export-trigger"
+              id="export-palette-button"
+              type="button"
+              aria-label="JSONをエクスポート"
+              aria-haspopup="dialog"
+              aria-controls="export-dialog"
+              aria-expanded="false"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="M12 3v11m0 0 4-4m-4 4-4-4M5 15v3.5A2.5 2.5 0 0 0 7.5 21h9a2.5 2.5 0 0 0 2.5-2.5V15" />
+              </svg>
+            </button>
           </div>
 
           <div class="control-stack">
@@ -399,6 +412,56 @@
         </section>
       </div>
     </main>
+
+    <dialog
+      class="export-dialog"
+      id="export-dialog"
+      closedby="any"
+      aria-labelledby="export-dialog-title"
+      aria-describedby="export-dialog-description"
+    >
+      <div class="export-dialog-content">
+        <div class="export-dialog-header">
+          <div>
+            <h2 id="export-dialog-title">エクスポート</h2>
+          </div>
+          <form method="dialog">
+            <button
+              class="dialog-close-button"
+              type="submit"
+              aria-label="JSONエクスポートを閉じる"
+            >
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <path d="m6 6 12 12M18 6 6 18" />
+              </svg>
+            </button>
+          </form>
+        </div>
+        <p class="export-dialog-description" id="export-dialog-description">
+          パレットを色相ごとのグループに分けてJSONで表示しています。
+        </p>
+        <pre
+          class="export-json-preview"
+          id="export-json-preview"
+          tabindex="0"
+          aria-label="JSONプレビュー"
+        ><code id="export-json-code"></code></pre>
+        <div class="export-copy-row">
+          <p class="export-copy-hint">
+            JSON内を選択している場合は選択範囲だけを、選択がない場合はJSON全体をコピーします。
+          </p>
+          <div class="export-dialog-actions">
+            <button class="export-copy-button" id="export-copy-button" type="button">
+              <svg viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                <rect x="8" y="8" width="11" height="11" rx="2" />
+                <path d="M16 8V6.5A2.5 2.5 0 0 0 13.5 4h-7A2.5 2.5 0 0 0 4 6.5v7A2.5 2.5 0 0 0 6.5 16H8" />
+              </svg>
+              <span id="export-copy-label">クリップボードにコピー</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </dialog>
 
     <div class="toast-container" aria-live="polite">
       <div

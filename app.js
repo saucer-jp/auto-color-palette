@@ -7,6 +7,7 @@ import {
   createLightnessEvaluator,
   generatePalette,
   getSwatchColor,
+  serializePaletteExport,
   normalizeHex,
   normalizeSettings,
 } from "./palette-model.mjs";
@@ -18,6 +19,8 @@ const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
 });
 
 const STORAGE_KEY = "auto-color-palette-settings-v1";
+const EXPORT_COPY_LABEL = "クリップボードにコピー";
+const EXPORT_COPY_FEEDBACK_DURATION = 3000;
 
 function getDefaultPaletteBackground() {
   return window.matchMedia?.("(prefers-color-scheme: dark)")?.matches
@@ -48,6 +51,12 @@ const elements = {
   lightnessSCurveAmount: document.querySelector("#lightness-s-amount"),
   lightnessSCurveAmountValue: document.querySelector("#lightness-s-amount-value"),
   resetButton: document.querySelector("#reset-button"),
+  exportPaletteButton: document.querySelector("#export-palette-button"),
+  exportDialog: document.querySelector("#export-dialog"),
+  exportJsonPreview: document.querySelector("#export-json-preview"),
+  exportJsonCode: document.querySelector("#export-json-code"),
+  exportCopyButton: document.querySelector("#export-copy-button"),
+  exportCopyLabel: document.querySelector("#export-copy-label"),
   copyShareUrl: document.querySelector("#copy-share-url"),
   compatibilityNote: document.querySelector("#compatibility-note"),
   paletteGrid: document.querySelector("#palette-grid"),
@@ -91,6 +100,7 @@ colorCanvas.width = 1;
 colorCanvas.height = 1;
 const colorContext = colorCanvas.getContext("2d", { willReadFrequently: true });
 let toastTimer;
+let exportCopyFeedbackTimer = null;
 let paletteRenderFrame = null;
 let saveSettingsTimer = null;
 let paletteCacheKey = null;
@@ -693,6 +703,63 @@ function getPaletteForState() {
   return paletteCache;
 }
 
+function updateExportPreview() {
+  elements.exportJsonCode.textContent = serializePaletteExport(
+    getPaletteForState(),
+  );
+}
+
+function setExportCopyButtonState(label, stateName) {
+  elements.exportCopyLabel.textContent = label;
+
+  if (stateName) {
+    elements.exportCopyButton.dataset.state = stateName;
+  } else {
+    delete elements.exportCopyButton.dataset.state;
+  }
+}
+
+function clearExportCopyFeedbackTimer() {
+  window.clearTimeout(exportCopyFeedbackTimer);
+  exportCopyFeedbackTimer = null;
+}
+
+function resetExportCopyFeedback() {
+  clearExportCopyFeedbackTimer();
+  setExportCopyButtonState(EXPORT_COPY_LABEL);
+}
+
+function scheduleExportCopyFeedbackReset() {
+  clearExportCopyFeedbackTimer();
+  exportCopyFeedbackTimer = window.setTimeout(() => {
+    exportCopyFeedbackTimer = null;
+    setExportCopyButtonState(EXPORT_COPY_LABEL);
+  }, EXPORT_COPY_FEEDBACK_DURATION);
+}
+
+function getExportCopyText() {
+  const selection = window.getSelection?.();
+  const preview = elements.exportJsonPreview;
+
+  if (selection && !selection.isCollapsed && selection.rangeCount > 0) {
+    const range = selection.getRangeAt(0);
+    const commonAncestor = range.commonAncestorContainer;
+    const selectionIsInPreview =
+      preview.contains(selection.anchorNode) &&
+      preview.contains(selection.focusNode) &&
+      (commonAncestor === preview || preview.contains(commonAncestor));
+
+    if (selectionIsInPreview) {
+      const selectedText = selection.toString();
+      if (selectedText.length > 0) {
+        return selectedText;
+      }
+    }
+  }
+
+  return elements.exportJsonCode.textContent || "";
+}
+
 function hasSamePaletteShape(palette) {
   return (
     paletteDom &&
@@ -863,6 +930,80 @@ function writeClipboard(text) {
   }
 
   return fallbackCopy(text);
+}
+
+async function copyExportJson() {
+  clearExportCopyFeedbackTimer();
+  const text = getExportCopyText();
+
+  try {
+    await writeClipboard(text);
+    setExportCopyButtonState("コピーされました", "success");
+    scheduleExportCopyFeedbackReset();
+  } catch {
+    setExportCopyButtonState("コピーに失敗しました", "error");
+    scheduleExportCopyFeedbackReset();
+  }
+}
+
+function openExportDialog() {
+  updateExportPreview();
+  resetExportCopyFeedback();
+
+  if (elements.exportDialog.open) {
+    return;
+  }
+
+  if (typeof elements.exportDialog.showModal === "function") {
+    elements.exportDialog.showModal();
+  } else {
+    elements.exportDialog.setAttribute("open", "");
+  }
+
+  elements.exportPaletteButton.setAttribute("aria-expanded", "true");
+}
+
+function handleExportDialogBackdropClick(event) {
+  if (event.target !== elements.exportDialog) {
+    return;
+  }
+
+  const rect = elements.exportDialog.getBoundingClientRect();
+  const isDialogContent =
+    rect.top <= event.clientY &&
+    event.clientY <= rect.top + rect.height &&
+    rect.left <= event.clientX &&
+    event.clientX <= rect.left + rect.width;
+
+  if (!isDialogContent) {
+    elements.exportDialog.close();
+  }
+}
+
+function bindExportDialog() {
+  elements.exportPaletteButton.addEventListener("click", openExportDialog);
+  elements.exportCopyButton.addEventListener("click", () => {
+    void copyExportJson();
+  });
+  elements.exportDialog.addEventListener("close", () => {
+    clearExportCopyFeedbackTimer();
+    elements.exportPaletteButton.setAttribute("aria-expanded", "false");
+    elements.exportPaletteButton.focus({ preventScroll: true });
+  });
+  elements.exportDialog.addEventListener("cancel", (event) => {
+    event.preventDefault();
+    elements.exportDialog.close();
+  });
+
+  if (
+    typeof HTMLDialogElement === "undefined" ||
+    !("closedBy" in HTMLDialogElement.prototype)
+  ) {
+    elements.exportDialog.addEventListener(
+      "click",
+      handleExportDialogBackdropClick,
+    );
+  }
 }
 
 async function copySwatch(swatch) {
@@ -1048,6 +1189,7 @@ function bindEvents() {
 
   bindCurveEditor("chroma");
   bindCurveEditor("lightness");
+  bindExportDialog();
   elements.resetButton.addEventListener("click", resetSettings);
   elements.copyShareUrl.addEventListener("click", () => {
     void copyShareUrl();
