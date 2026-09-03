@@ -787,6 +787,10 @@
     background: var(--surface-raised);
   }
 
+  html[data-grayscale-preview] body {
+    filter: grayscale(1);
+  }
+
   .compatibility-note {
     grid-row: 1;
     padding-block-end: 0.8rem;

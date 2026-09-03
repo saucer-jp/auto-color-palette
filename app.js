@@ -42,6 +42,7 @@ const elements = {
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
+  grayscalePreview: document.querySelector("#grayscale-preview"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
@@ -104,6 +105,7 @@ let saveSettingsTimer = null;
 let paletteCacheKey = null;
 let paletteCache = null;
 let paletteDom = null;
+let grayscalePreviewEnabled = false;
 const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
@@ -371,6 +373,7 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   elements.gap.value = String(state.gap);
   elements.gapValue.textContent = state.gap + "px";
   elements.showGamutWarnings.checked = state.showGamutWarnings;
+  elements.grayscalePreview.checked = grayscalePreviewEnabled;
 
   updateRangeProgress(elements.baseHue);
   updateRangeProgress(elements.hueCount);
@@ -381,6 +384,13 @@ function syncControls({ updateCurveGraphs = true } = {}) {
     updateCurveGraph("chroma");
     updateCurveGraph("lightness");
   }
+}
+
+function updateGrayscalePreview() {
+  elements.root.toggleAttribute(
+    "data-grayscale-preview",
+    grayscalePreviewEnabled,
+  );
 }
 
 function readSettingsFromControls() {
@@ -1167,6 +1177,10 @@ function bindEvents() {
   elements.showGamutWarnings.addEventListener("change", () => {
     renderFromControls(elements.showGamutWarnings);
   });
+  elements.grayscalePreview.addEventListener("change", () => {
+    grayscalePreviewEnabled = elements.grayscalePreview.checked;
+    updateGrayscalePreview();
+  });
 
   elements.paletteGrid.addEventListener("click", (event) => {
     const swatch = getSwatchFromEvent(event);
@@ -1192,6 +1206,7 @@ if (urlSettings) {
 bindEvents();
 updateCompatibilityMessage();
 syncControls();
+updateGrayscalePreview();
 renderPalette();
 syncSettingsUrl();
 saveSettings();
