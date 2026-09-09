@@ -10,7 +10,10 @@ import {
   normalizeHex,
   normalizeSettings,
 } from "./palette-model.mjs";
-import { getSettingsUrl, parseSettingsFromUrl } from "./settings-url.mjs";
+import {
+  getSettingsUrl,
+  parseSettingsFromUrl,
+} from "./settings-url.mjs";
 
 const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
   light: "#F9FAF7",
@@ -44,6 +47,8 @@ const elements = {
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
   grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
   grayscalePreview: document.querySelector("#grayscale-preview"),
+  toneBalance: document.querySelector("#tone-balance"),
+  toneBalanceValue: document.querySelector("#tone-balance-value"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
@@ -171,7 +176,8 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    version: 5,
+    version: 6,
+    toneBalance: state.toneBalance,
     baseHue: state.baseHue,
     chromaCurve: { ...state.chromaCurve },
     lightnessCurve: { ...state.lightnessCurve },
@@ -376,6 +382,7 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   elements.gapValue.textContent = state.gap + "px";
   elements.showGamutWarnings.checked = state.showGamutWarnings;
   elements.grayscalePreview.checked = grayscalePreviewEnabled;
+  syncToneBalanceControl();
 
   updateRangeProgress(elements.baseHue);
   updateRangeProgress(elements.hueCount);
@@ -395,6 +402,17 @@ function updateGrayscalePreview() {
   );
 }
 
+function syncToneBalanceControl() {
+  const value = state.toneBalance;
+  elements.toneBalance.value = String(value);
+  elements.toneBalanceValue.textContent = String(value);
+  elements.toneBalance.setAttribute(
+    "aria-valuetext",
+    value === 0 ? "0、均質さ優先" : value + "、大きいほど鮮やかさを優先",
+  );
+  updateRangeProgress(elements.toneBalance);
+}
+
 function syncGrayscalePreviewAvailability() {
   elements.grayscalePreviewSection.hidden = !isLocalhost;
   if (!isLocalhost) {
@@ -411,7 +429,8 @@ function readSettingsFromControls() {
   return normalizeSettings(
     {
       ...state,
-      version: 5,
+      version: 6,
+      toneBalance: Number(elements.toneBalance.value),
       baseHue: Number(elements.baseHue.value),
       lightnessCurveMode,
       lightnessSCurve: {
@@ -697,6 +716,7 @@ function getPaletteCacheKey() {
     state.lightnessSCurve.amount,
     state.hueCount,
     state.stepCount,
+    state.toneBalance,
   ].join("|");
 }
 
@@ -1031,7 +1051,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
   const nextSettingsInput = {
     ...state,
-    version: 5,
+    version: 6,
   };
 
   if (isLightnessSCurve) {
@@ -1169,6 +1189,7 @@ function bindEvents() {
     elements.stepCount,
     elements.gap,
     elements.lightnessSCurveAmount,
+    elements.toneBalance,
   ].forEach((input) =>
     input.addEventListener("input", () => renderFromControls(input)),
   );

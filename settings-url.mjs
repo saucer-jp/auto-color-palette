@@ -1,12 +1,17 @@
 import {
   createDefaultSettings,
   normalizeSettings,
+  normalizeToneBalance,
 } from "./palette-model.mjs";
 
 export const SETTINGS_URL_VERSION = "1";
+const DEV_CHROMA_RECOVERY_DEFAULT = 0.5;
+
+const DEV_CHROMA_RECOVERY_PARAMETER = "devChromaRecovery";
 
 const SETTINGS_MARKER = "settings";
 const URL_PARAMETER_NAMES = Object.freeze([
+  "toneBalance",
   "baseHue",
   "chromaStart",
   "chromaMiddle",
@@ -30,6 +35,23 @@ function toUrl(input) {
   return input instanceof URL
     ? new URL(input.href)
     : new URL(String(input), "https://auto-color-palette.invalid/");
+}
+
+function normalizeDevChromaRecovery(value) {
+  const number =
+    value === null || String(value).trim() === "" ? NaN : Number(value);
+  return Number.isFinite(number)
+    ? Math.round(Math.min(1, Math.max(0, number)) * 100) / 100
+    : DEV_CHROMA_RECOVERY_DEFAULT;
+}
+
+function parseDevChromaRecovery(input) {
+  const url = toUrl(input);
+  return url.hostname === "localhost"
+    ? normalizeDevChromaRecovery(
+        url.searchParams.get(DEV_CHROMA_RECOVERY_PARAMETER),
+      )
+    : 0;
 }
 
 function setNumberParameter(parameters, name, value) {
@@ -67,7 +89,8 @@ export function hasSettingsInUrl(input) {
 
   return (
     parameters.get(SETTINGS_MARKER) === SETTINGS_URL_VERSION ||
-    URL_PARAMETER_NAMES.some((name) => parameters.has(name))
+    URL_PARAMETER_NAMES.some((name) => parameters.has(name)) ||
+    (toUrl(input).hostname === "localhost" && parameters.has(DEV_CHROMA_RECOVERY_PARAMETER))
   );
 }
 
@@ -79,7 +102,7 @@ export function getSettingsUrl(settings, currentUrl) {
   const normalized = normalizeSettings(
     {
       ...source,
-      version: 5,
+      version: source.version ?? 6,
       baseHue: source.baseHue ?? createDefaultSettings().baseHue,
     },
     defaultPaletteBackground,
@@ -88,8 +111,10 @@ export function getSettingsUrl(settings, currentUrl) {
   const parameters = url.searchParams;
 
   parameters.delete(SETTINGS_MARKER);
+  parameters.delete(DEV_CHROMA_RECOVERY_PARAMETER);
   URL_PARAMETER_NAMES.forEach((name) => parameters.delete(name));
   parameters.set(SETTINGS_MARKER, SETTINGS_URL_VERSION);
+  setNumberParameter(parameters, "toneBalance", normalized.toneBalance);
   setNumberParameter(parameters, "baseHue", normalized.baseHue);
   setNumberParameter(parameters, "chromaStart", normalized.chromaCurve.start);
   setNumberParameter(parameters, "chromaMiddle", normalized.chromaCurve.middle);
@@ -147,7 +172,12 @@ export function parseSettingsFromUrl(
 
   return normalizeSettings(
     {
-      version: 5,
+      version: 6,
+      toneBalance: parameters.has("toneBalance")
+        ? normalizeToneBalance(parameters.get("toneBalance"))
+        : url.hostname === "localhost" && parameters.has(DEV_CHROMA_RECOVERY_PARAMETER)
+          ? parseDevChromaRecovery(url) * 100
+          : 0,
       baseHue: readNumberParameter(parameters, "baseHue", defaults.baseHue),
       chromaCurve: {
         start: readNumberParameter(

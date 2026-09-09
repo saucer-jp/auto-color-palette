@@ -4,6 +4,7 @@ export const LIGHTNESS_CURVE_MODES = Object.freeze({
 });
 
 export const DEFAULTS = Object.freeze({
+  toneBalance: 50,
   baseHue: 259.8,
   chromaCurve: Object.freeze({
     start: 0.188,
@@ -47,10 +48,14 @@ const SRGB_EPSILON = 0.00001;
 // rendered HEX value. The margin is intentionally small so it does not
 // noticeably reduce the requested chroma.
 const SRGB_OUTPUT_GAMUT_MARGIN = 0.0001;
-// 22 iterations are enough to make the tone correction precise while keeping
-// the largest supported palette responsive during slider updates.
-const TONE_MATCH_ITERATIONS = 22;
-const TONE_MATCH_EPSILON = 1e-9;
+// Search the shared chroma boundary once per row, preserving both OKLab
+// lightness and chroma across hues before the final 8-bit HEX rounding.
+const GAMUT_SEARCH_ITERATIONS = 22;
+const CHROMA_MATCH_EPSILON = 1e-9;
+// Visual-tuning budgets, not perceptual thresholds. The upper
+// half of the recovery control can scale these base budgets up to 2x.
+const BASE_RELATIVE_CHROMA_RECOVERY = 0.75;
+const BASE_ABSOLUTE_CHROMA_RECOVERY = 0.08;
 
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -169,7 +174,8 @@ function normalizeLightnessSCurve(curve, fallback) {
 
 export function createDefaultSettings(paletteBackground = "#F9FAF7") {
   return {
-    version: 5,
+    version: 6,
+    toneBalance: DEFAULTS.toneBalance,
     baseHue: DEFAULTS.baseHue,
     chromaCurve: { ...DEFAULTS.chromaCurve },
     lightnessCurve: { ...DEFAULTS.lightnessCurve },
@@ -235,7 +241,12 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
     : normalizeLightnessSCurve(source.lightnessSCurve, defaults.lightnessSCurve);
 
   return {
-    version: 5,
+    version: 6,
+    // Preserve the appearance of saved palettes from before this setting.
+    toneBalance: normalizeToneBalance(
+      source.toneBalance,
+      Number(source.version) < 6 ? 0 : DEFAULTS.toneBalance,
+    ),
     baseHue: isLegacy
       ? legacyBaseHue(source)
       : normalizeHue(source.baseHue, defaults.baseHue),
@@ -300,6 +311,8 @@ export function getSrgbLightness(hex) {
 }
 
 export function getPerceptualTone(hex) {
+  // Lightness component only. Uniform colored rows also need matching C;
+  // this scalar alone cannot evaluate their overall tonal consistency.
   return getSrgbLightness(hex);
 }
 
@@ -441,116 +454,76 @@ export function oklchToHex(L, C, H) {
   return rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-function getOklchPerceptualTone(L, C, cosHue, sinHue) {
-  return getSrgbOklabLightness(
-    oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
-  );
-}
-
-function isToneReachable(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
-
-  return (
-    targetTone >= darkestTone - TONE_MATCH_EPSILON &&
-    targetTone <= lightestTone + TONE_MATCH_EPSILON
-  );
-}
-
-function solveLightnessForTone(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
-
-  if (targetTone <= darkestTone + TONE_MATCH_EPSILON) {
-    return 0;
-  }
-  if (targetTone >= lightestTone - TONE_MATCH_EPSILON) {
-    return 1;
-  }
-
-  let lower = 0;
-  let upper = 1;
-
-  for (let iteration = 0; iteration < TONE_MATCH_ITERATIONS; iteration += 1) {
-    const middle = (lower + upper) / 2;
-    const tone = getOklchPerceptualTone(middle, C, cosHue, sinHue);
-
-    if (tone < targetTone) {
-      lower = middle;
-    } else {
-      upper = middle;
-    }
-  }
-
-  return (lower + upper) / 2;
-}
-
-function solveToneAtChroma(targetTone, C, cosHue, sinHue) {
-  if (!isToneReachable(targetTone, C, cosHue, sinHue)) {
-    return null;
-  }
-
-  const L = solveLightnessForTone(targetTone, C, cosHue, sinHue);
-
-  return {
-    L,
-    C,
-    rgb: oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
-  };
-}
-
-function matchOklchTone(targetTone, requestedChroma, cosHue, sinHue) {
+function getSharedRowChroma(L, requestedChroma, hues) {
   const normalizedChroma = clamp(
     requestedChroma,
     LIMITS.chroma.min,
     LIMITS.chroma.max,
   );
-  const requestedColor = solveToneAtChroma(
-    targetTone,
-    normalizedChroma,
-    cosHue,
-    sinHue,
-  );
+  const fitsEveryHue = (C) =>
+    hues.every(({ cosHue, sinHue }) =>
+      isSrgbSafeForOutput(oklchToSrgbWithHueVector(L, C, cosHue, sinHue)),
+    );
 
-  if (requestedColor && isSrgbSafeForOutput(requestedColor.rgb)) {
-    return {
-      ...requestedColor,
-      wasGamutAdjusted: false,
-    };
+  // Black and white cannot carry chroma. Also allow neutral endpoints that
+  // sit outside the small safety margin used for chromatic output.
+  if (normalizedChroma === 0 || !fitsEveryHue(0)) {
+    return 0;
   }
 
-  // Some combinations of high chroma, extreme lightness, and hue cannot
-  // produce the row's target tone inside sRGB. Reduce chroma only in that
-  // case, keeping the most colorful tone-matched color that is possible.
+  if (fitsEveryHue(normalizedChroma)) {
+    return normalizedChroma;
+  }
+
+  // Per-hue gamut clipping preserves L but leaves some hues much more
+  // colorful than their neighbours. Use the largest C supported by every
+  // displayed hue at this L, so gamut mapping preserves the row's L AND C.
+  // In-gamut OKLCH already has OKLab lightness L; no nested lightness solve
+  // or grayscale-filter matching is needed.
   let lower = LIMITS.chroma.min;
   let upper = normalizedChroma;
-  let bestColor = solveToneAtChroma(targetTone, lower, cosHue, sinHue);
 
   for (
     let iteration = 0;
-    iteration < TONE_MATCH_ITERATIONS;
+    iteration < GAMUT_SEARCH_ITERATIONS;
     iteration += 1
   ) {
     const middle = (lower + upper) / 2;
-    const candidate = solveToneAtChroma(
-      targetTone,
-      middle,
-      cosHue,
-      sinHue,
-    );
 
-    if (candidate && isSrgbSafeForOutput(candidate.rgb)) {
+    if (fitsEveryHue(middle)) {
       lower = middle;
-      bestColor = candidate;
     } else {
       upper = middle;
     }
   }
 
-  return {
-    ...bestColor,
-    wasGamutAdjusted: lower < normalizedChroma - TONE_MATCH_EPSILON,
-  };
+  return lower;
+}
+
+function recoverHueChroma(L, sharedChroma, requestedChroma, hue, recovery) {
+  if (recovery === 0 || sharedChroma === 0 || sharedChroma === requestedChroma) {
+    return sharedChroma;
+  }
+
+  const availableChroma = getSharedRowChroma(L, requestedChroma, [hue]);
+  const availableGain = Math.max(0, availableChroma - sharedChroma);
+  const recoverableChroma = Math.min(
+    availableGain,
+    sharedChroma * BASE_RELATIVE_CHROMA_RECOVERY,
+    BASE_ABSOLUTE_CHROMA_RECOVERY,
+  );
+  // Keep 0–50 unchanged. A quadratic boost above 50 has zero slope at the
+  // join, avoiding a sudden jump in chroma as the slider crosses its midpoint.
+  const boost = Math.max(0, 2 * recovery - 1) ** 2;
+  const recoveryStrength = recovery + boost;
+  // Broaden the bell at high recovery, retaining endpoint suppression while
+  // giving dark/light colors more room. At 100, strength is 2 and exponent 1.
+  const lightnessWeight = (4 * L * (1 - L)) ** (2 - boost);
+  const recoveredGain = Math.min(
+    availableGain,
+    recoverableChroma * recoveryStrength * lightnessWeight,
+  );
+  return sharedChroma + recoveredGain;
 }
 
 function sign(value) {
@@ -822,36 +795,33 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
   };
 }
 
-function createToneMatchedSwatchColor(
-  C,
-  H,
-  cosHue,
-  sinHue,
-  targetTone,
-) {
-  const matchedColor = matchOklchTone(targetTone, C, cosHue, sinHue);
-
-  return {
-    ...createSwatchColor(
-      matchedColor.L,
-      matchedColor.C,
-      H,
-      cosHue,
-      sinHue,
-    ),
-    // The generated color is kept in sRGB, so this flag indicates that the
-    // requested tone/chroma combination needed gamut adjustment.
-    isOutOfSrgbGamut: matchedColor.wasGamutAdjusted,
-  };
+export function normalizeToneBalance(value, fallback = DEFAULTS.toneBalance) {
+  if (value == null || String(value).trim() === "") return fallback;
+  return Math.round(clamp(finiteNumber(value, fallback), 0, 100));
 }
 
-export function generatePalette(settings) {
+export function generatePalette(
+  settings,
+  { chromaRecovery = normalizeToneBalance(settings.toneBalance, 0) / 100 } = {},
+) {
+  const recovery = clamp(finiteNumber(chromaRecovery, 0), 0, 1);
   const columns = [];
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
-  // The curves provide each row's target. Hue columns compensate their
-  // colored, rendered sRGB OKLab lightness against the neutral reference.
+  const hues = Array.from({ length: settings.hueCount }, (_, hueIndex) => {
+    const hueOffset = (hueIndex * 360) / settings.hueCount;
+    const hue = wrapHue(settings.baseHue + hueOffset);
+    const hueRadians = (hue * Math.PI) / 180;
+    return {
+      hue,
+      hueOffset,
+      cosHue: Math.cos(hueRadians),
+      sinHue: Math.sin(hueRadians),
+    };
+  });
+  // L targets the rendered neutral reference. The common C is the baseline
+  // for optional, bounded per-hue recovery; requested C stays an upper bound.
   const lightnessEvaluator = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -863,11 +833,15 @@ export function generatePalette(settings) {
   for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
     const progress = stepIndex / stepDenominator;
     const lightness = lightnessEvaluator(progress);
+    const targetTone = getPerceptualTone(oklchToHex(lightness, 0, 0));
+    const requestedChroma = chromaEvaluator(progress);
+    const sharedChroma = getSharedRowChroma(targetTone, requestedChroma, hues);
     steps.push({
       progress,
       L: lightness,
-      C: chromaEvaluator(progress),
-      targetTone: getPerceptualTone(oklchToHex(lightness, 0, 0)),
+      C: sharedChroma,
+      targetTone,
+      requestedChroma,
     });
   }
 
@@ -895,23 +869,25 @@ export function generatePalette(settings) {
     });
   }
 
-  for (let hueIndex = 0; hueIndex < settings.hueCount; hueIndex += 1) {
-    const hueOffset = (hueIndex * 360) / settings.hueCount;
-    const hue = wrapHue(settings.baseHue + hueOffset);
-    const hueRadians = (hue * Math.PI) / 180;
-    const cosHue = Math.cos(hueRadians);
-    const sinHue = Math.sin(hueRadians);
+  for (const hueVector of hues) {
+    const { hue, hueOffset, cosHue, sinHue } = hueVector;
     const swatches = [];
 
-    steps.forEach(({ progress, C, targetTone }, stepIndex) => {
+    steps.forEach(({ progress, C, targetTone, requestedChroma }, stepIndex) => {
+      const recoveredChroma = recoverHueChroma(
+        targetTone, C, requestedChroma, hueVector, recovery,
+      );
       const swatch = {
-        ...createToneMatchedSwatchColor(
-          C,
+        ...createSwatchColor(
+          targetTone,
+          recoveredChroma,
           hue,
           cosHue,
           sinHue,
-          targetTone,
         ),
+        // Includes colors reduced to match another hue's sRGB limit.
+        isOutOfSrgbGamut:
+          recoveredChroma < requestedChroma - CHROMA_MATCH_EPSILON,
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,
