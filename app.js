@@ -44,6 +44,7 @@ const elements = {
   stepCountValue: document.querySelector("#step-count-value"),
   gap: document.querySelector("#gap"),
   gapValue: document.querySelector("#gap-value"),
+  gamutWarningSection: document.querySelector("#gamut-warning-section"),
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
   grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
   grayscalePreview: document.querySelector("#grayscale-preview"),
@@ -100,6 +101,10 @@ const supportsOklch =
   typeof CSS !== "undefined" &&
   CSS.supports("background-color", "oklch(0.5 0.1 180)");
 const isLocalhost = window.location.hostname === "localhost";
+
+function isGamutWarningDisplayEnabled() {
+  return isLocalhost && state.showGamutWarnings;
+}
 
 const colorCanvas = document.createElement("canvas");
 colorCanvas.width = 1;
@@ -421,6 +426,13 @@ function syncGrayscalePreviewAvailability() {
   }
 }
 
+function syncGamutWarningAvailability() {
+  elements.gamutWarningSection.hidden = !isLocalhost;
+  if (!isLocalhost) {
+    state.showGamutWarnings = false;
+  }
+}
+
 function readSettingsFromControls() {
   const lightnessCurveMode =
     elements.lightnessCurveModes.find((input) => input.checked)?.value ||
@@ -441,7 +453,8 @@ function readSettingsFromControls() {
       hueCount: Number(elements.hueCount.value),
       stepCount: Number(elements.stepCount.value),
       gap: Number(elements.gap.value),
-      showGamutWarnings: elements.showGamutWarnings.checked,
+      showGamutWarnings:
+        isLocalhost && elements.showGamutWarnings.checked,
     },
     getDefaultPaletteBackground(),
   );
@@ -474,7 +487,7 @@ function getSwatchAriaLabel(swatch, hex) {
       ? "グレースケール"
       : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
   const gamutLabel =
-    swatch.dataset.gamutWarning === "true"
+    isGamutWarningDisplayEnabled() && swatch.dataset.gamutWarning === "true"
       ? "、sRGB色域に収めるため彩度を調整"
       : "";
 
@@ -555,7 +568,7 @@ function updateSwatch(swatch, swatchData) {
   swatch.style.setProperty("--swatch-foreground", getReadableTextColor(fallbackHex));
   metadata.hexLabel.textContent = fallbackHex;
   swatch.setAttribute("aria-label", getSwatchAriaLabel(swatch, fallbackHex));
-  syncSwatchWarning(swatch, state.showGamutWarnings);
+  syncSwatchWarning(swatch, isGamutWarningDisplayEnabled());
 }
 
 function createPaletteColumn(column, columnIndex) {
@@ -810,7 +823,7 @@ function buildPaletteDom(palette) {
   return {
     columns,
     palette,
-    showGamutWarnings: state.showGamutWarnings,
+    showGamutWarnings: isGamutWarningDisplayEnabled(),
   };
 }
 
@@ -828,7 +841,7 @@ function updatePaletteDom(palette) {
   });
 
   paletteDom.palette = palette;
-  paletteDom.showGamutWarnings = state.showGamutWarnings;
+  paletteDom.showGamutWarnings = isGamutWarningDisplayEnabled();
 }
 
 function updateGamutWarningVisibility() {
@@ -836,12 +849,13 @@ function updateGamutWarningVisibility() {
     return;
   }
 
+  const showGamutWarnings = isGamutWarningDisplayEnabled();
   paletteDom.columns.forEach((column) => {
     column.swatches.forEach((swatch) => {
-      syncSwatchWarning(swatch, state.showGamutWarnings);
+      syncSwatchWarning(swatch, showGamutWarnings);
     });
   });
-  paletteDom.showGamutWarnings = state.showGamutWarnings;
+  paletteDom.showGamutWarnings = showGamutWarnings;
 }
 
 function renderPalette() {
@@ -861,7 +875,9 @@ function renderPalette() {
     paletteDom = buildPaletteDom(palette);
   } else if (paletteDom.palette !== palette) {
     updatePaletteDom(palette);
-  } else if (paletteDom.showGamutWarnings !== state.showGamutWarnings) {
+  } else if (
+    paletteDom.showGamutWarnings !== isGamutWarningDisplayEnabled()
+  ) {
     updateGamutWarningVisibility();
   }
 
@@ -1174,6 +1190,7 @@ function bindCurveEditor(curveType) {
 
 function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
+  syncGamutWarningAvailability();
   syncControls();
   syncSettingsUrl();
   schedulePaletteRender();
@@ -1205,9 +1222,11 @@ function bindEvents() {
   elements.copyShareUrl.addEventListener("click", () => {
     void copyShareUrl();
   });
-  elements.showGamutWarnings.addEventListener("change", () => {
-    renderFromControls(elements.showGamutWarnings);
-  });
+  if (isLocalhost) {
+    elements.showGamutWarnings.addEventListener("change", () => {
+      renderFromControls(elements.showGamutWarnings);
+    });
+  }
   if (isLocalhost) {
     elements.grayscalePreview.addEventListener("change", () => {
       grayscalePreviewEnabled = elements.grayscalePreview.checked;
@@ -1236,6 +1255,7 @@ if (urlSettings) {
   Object.assign(state, storedSettings);
 }
 
+syncGamutWarningAvailability();
 syncGrayscalePreviewAvailability();
 bindEvents();
 updateCompatibilityMessage();

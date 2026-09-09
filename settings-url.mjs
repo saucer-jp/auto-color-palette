@@ -28,8 +28,8 @@ const URL_PARAMETER_NAMES = Object.freeze([
   "hueCount",
   "stepCount",
   "gap",
-  "showGamutWarnings",
 ]);
+const DEV_URL_PARAMETER_NAMES = Object.freeze(["showGamutWarnings"]);
 
 function toUrl(input) {
   return input instanceof URL
@@ -85,12 +85,15 @@ function getDefaultPaletteBackground(paletteBackground) {
 }
 
 export function hasSettingsInUrl(input) {
-  const parameters = toUrl(input).searchParams;
+  const url = toUrl(input);
+  const parameters = url.searchParams;
 
   return (
     parameters.get(SETTINGS_MARKER) === SETTINGS_URL_VERSION ||
     URL_PARAMETER_NAMES.some((name) => parameters.has(name)) ||
-    (toUrl(input).hostname === "localhost" && parameters.has(DEV_CHROMA_RECOVERY_PARAMETER))
+    (url.hostname === "localhost" &&
+      (parameters.has(DEV_CHROMA_RECOVERY_PARAMETER) ||
+        DEV_URL_PARAMETER_NAMES.some((name) => parameters.has(name))))
   );
 }
 
@@ -112,7 +115,9 @@ export function getSettingsUrl(settings, currentUrl) {
 
   parameters.delete(SETTINGS_MARKER);
   parameters.delete(DEV_CHROMA_RECOVERY_PARAMETER);
-  URL_PARAMETER_NAMES.forEach((name) => parameters.delete(name));
+  [...URL_PARAMETER_NAMES, ...DEV_URL_PARAMETER_NAMES].forEach((name) =>
+    parameters.delete(name),
+  );
   parameters.set(SETTINGS_MARKER, SETTINGS_URL_VERSION);
   setNumberParameter(parameters, "toneBalance", normalized.toneBalance);
   setNumberParameter(parameters, "baseHue", normalized.baseHue);
@@ -151,7 +156,12 @@ export function getSettingsUrl(settings, currentUrl) {
   setNumberParameter(parameters, "hueCount", normalized.hueCount);
   setNumberParameter(parameters, "stepCount", normalized.stepCount);
   setNumberParameter(parameters, "gap", normalized.gap);
-  parameters.set("showGamutWarnings", normalized.showGamutWarnings ? "1" : "0");
+  if (url.hostname === "localhost") {
+    parameters.set(
+      "showGamutWarnings",
+      normalized.showGamutWarnings ? "1" : "0",
+    );
+  }
   url.search = parameters.toString();
 
   return url.toString();
@@ -169,6 +179,7 @@ export function parseSettingsFromUrl(
 
   const defaults = createDefaultSettings(paletteBackground);
   const parameters = url.searchParams;
+  const isLocalhost = url.hostname === "localhost";
 
   return normalizeSettings(
     {
@@ -246,11 +257,13 @@ export function parseSettingsFromUrl(
         defaults.stepCount,
       ),
       gap: readNumberParameter(parameters, "gap", defaults.gap),
-      showGamutWarnings: readBooleanParameter(
-        parameters,
-        "showGamutWarnings",
-        defaults.showGamutWarnings,
-      ),
+      showGamutWarnings: isLocalhost
+        ? readBooleanParameter(
+            parameters,
+            "showGamutWarnings",
+            defaults.showGamutWarnings,
+          )
+        : false,
     },
     paletteBackground,
   );
