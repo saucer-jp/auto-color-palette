@@ -4,6 +4,7 @@ export const LIGHTNESS_CURVE_MODES = Object.freeze({
 });
 
 export const DEFAULTS = Object.freeze({
+  toneBalance: 50,
   baseHue: 259.8,
   chromaCurve: Object.freeze({
     start: 0.188,
@@ -51,7 +52,7 @@ const SRGB_OUTPUT_GAMUT_MARGIN = 0.0001;
 // lightness and chroma across hues before the final 8-bit HEX rounding.
 const GAMUT_SEARCH_ITERATIONS = 22;
 const CHROMA_MATCH_EPSILON = 1e-9;
-// Experimental visual-tuning budgets, not perceptual thresholds. The upper
+// Visual-tuning budgets, not perceptual thresholds. The upper
 // half of the recovery control can scale these base budgets up to 2x.
 const BASE_RELATIVE_CHROMA_RECOVERY = 0.75;
 const BASE_ABSOLUTE_CHROMA_RECOVERY = 0.08;
@@ -173,7 +174,8 @@ function normalizeLightnessSCurve(curve, fallback) {
 
 export function createDefaultSettings(paletteBackground = "#F9FAF7") {
   return {
-    version: 5,
+    version: 6,
+    toneBalance: DEFAULTS.toneBalance,
     baseHue: DEFAULTS.baseHue,
     chromaCurve: { ...DEFAULTS.chromaCurve },
     lightnessCurve: { ...DEFAULTS.lightnessCurve },
@@ -239,7 +241,12 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
     : normalizeLightnessSCurve(source.lightnessSCurve, defaults.lightnessSCurve);
 
   return {
-    version: 5,
+    version: 6,
+    // Preserve the appearance of saved palettes from before this setting.
+    toneBalance: normalizeToneBalance(
+      source.toneBalance,
+      Number(source.version) < 6 ? 0 : DEFAULTS.toneBalance,
+    ),
     baseHue: isLegacy
       ? legacyBaseHue(source)
       : normalizeHue(source.baseHue, defaults.baseHue),
@@ -788,7 +795,15 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
   };
 }
 
-export function generatePalette(settings, { chromaRecovery = 0 } = {}) {
+export function normalizeToneBalance(value, fallback = DEFAULTS.toneBalance) {
+  if (value == null || String(value).trim() === "") return fallback;
+  return Math.round(clamp(finiteNumber(value, fallback), 0, 100));
+}
+
+export function generatePalette(
+  settings,
+  { chromaRecovery = normalizeToneBalance(settings.toneBalance, 0) / 100 } = {},
+) {
   const recovery = clamp(finiteNumber(chromaRecovery, 0), 0, 1);
   const columns = [];
   let gamutWarningCount = 0;

@@ -23,12 +23,9 @@ import {
   srgbToOklch,
 } from "../palette-model.mjs";
 import {
-  DEV_CHROMA_RECOVERY_DEFAULT,
   SETTINGS_URL_VERSION,
-  getPreviewSettingsUrl,
   getSettingsUrl,
   hasSettingsInUrl,
-  parseDevChromaRecovery,
   parseSettingsFromUrl,
 } from "../settings-url.mjs";
 
@@ -224,9 +221,9 @@ test("colored tone uses perceptual OKLab lightness", () => {
   assert.ok(Math.abs(getPerceptualTone("#0000FF") - 0.4520137184) < 1e-9);
 });
 
-test("default rows retain matching colored chroma after sRGB gamut mapping", () => {
+test("uniform rows retain matching colored chroma after sRGB gamut mapping", () => {
   const settings = createDefaultSettings();
-  const palette = generatePalette(settings);
+  const palette = generatePalette(settings, { chromaRecovery: 0 });
 
   for (let rowIndex = 0; rowIndex < settings.stepCount; rowIndex += 1) {
     const colors = palette.columns.slice(1).map((column) =>
@@ -286,7 +283,7 @@ test("common gamut uses the displayed hues rather than unrelated hues", () => {
 });
 
 test("colored row uniformity does not require identical CSS grayscale output", () => {
-  const palette = generatePalette(createDefaultSettings());
+  const palette = generatePalette({ ...createDefaultSettings(), toneBalance: 0 });
   const row = palette.columns.slice(1).map((column) => column.swatches[5].hex);
   const grayscale = row.map(getSrgbGrayscaleTone);
   const lightness = row.map(getPerceptualTone);
@@ -297,9 +294,9 @@ test("colored row uniformity does not require identical CSS grayscale output", (
   assert.ok(Math.max(...grayscale) - Math.min(...grayscale) > 0.01);
 });
 
-test("chroma recovery is opt-in and zero reproduces the uniform palette", () => {
+test("chroma recovery override zero reproduces the uniform palette", () => {
   const settings = createDefaultSettings();
-  const uniform = generatePalette(settings);
+  const uniform = generatePalette(settings, { chromaRecovery: 0 });
   for (const chromaRecovery of [0, -1, NaN, Infinity, "invalid"]) {
     assert.deepEqual(generatePalette(settings, { chromaRecovery }), uniform);
   }
@@ -311,7 +308,7 @@ test("chroma recovery is opt-in and zero reproduces the uniform palette", () => 
 
 test("recovery raises chroma progressively while retaining hue and lightness", () => {
   const settings = createDefaultSettings();
-  const uniform = generatePalette(settings);
+  const uniform = generatePalette(settings, { chromaRecovery: 0 });
   let previous = uniform;
   for (const chromaRecovery of [0.25, 0.5, 0.75, 1]) {
     const palette = generatePalette(settings, { chromaRecovery });
@@ -371,7 +368,7 @@ test("recovery is subdued near white and black compared with midtones", () => {
     lightnessCurve: { start: 0.05, middle: 0.5, end: 0.95 },
     chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
   };
-  const uniform = generatePalette(settings);
+  const uniform = generatePalette(settings, { chromaRecovery: 0 });
   const recovered = generatePalette(settings, { chromaRecovery: 1 });
   const relativeGain = (rowIndex) => {
     const common = uniform.columns[1].swatches[rowIndex].C;
@@ -393,7 +390,7 @@ test("recovery leaves neutral endpoints and already achievable chroma intact", (
       lightnessCurve: { start: 0, middle: 0.5, end: 1 },
       chromaCurve: { start: chroma, middle: chroma, end: chroma },
     };
-    const uniform = generatePalette(settings);
+    const uniform = generatePalette(settings, { chromaRecovery: 0 });
     const recovered = generatePalette(settings, { chromaRecovery: 1 });
     recovered.columns.forEach((column, columnIndex) => {
       for (const rowIndex of [0, 4]) {
@@ -442,24 +439,35 @@ test("recovered high-chroma palettes keep rendered lightness and rounded metadat
   }
 });
 
-test("dev recovery URL values are bounded, reproducible and localhost-only", () => {
-  const settings = createDefaultSettings();
-  assert.equal(parseDevChromaRecovery("http://localhost:4173/"), DEV_CHROMA_RECOVERY_DEFAULT);
-  for (const [input, expected] of [["", 0.5], ["invalid", 0.5], ["Infinity", 0.5], ["-1", 0], ["2", 1], ["0.3333", 0.33]]) {
-    assert.equal(parseDevChromaRecovery("http://localhost:4173/?devChromaRecovery=" + input), expected);
+test("public tone balance is normalized, persisted and shared on every host", () => {
+  assert.equal(createDefaultSettings().toneBalance, 50);
+  for (const toneBalance of [0, 50, 100]) {
+    const settings = normalizeSettings({ ...createDefaultSettings(), toneBalance });
+    assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(settings))), settings);
+    assert.deepEqual(generatePalette(settings), generatePalette(settings, { chromaRecovery: toneBalance / 100 }));
+    for (const origin of ["https://example.com", "http://localhost:4173", "http://127.0.0.1:4173"]) {
+      const url = getSettingsUrl(settings, origin + "/?devChromaRecovery=1&utm_source=test#preview");
+      assert.deepEqual(parseSettingsFromUrl(url), settings);
+      assert.equal(new URL(url).searchParams.has("devChromaRecovery"), false);
+      assert.equal(new URL(url).searchParams.get("utm_source"), "test");
+      assert.equal(new URL(url).hash, "#preview");
+    }
   }
+  for (const [input, expected] of [["", 50], ["invalid", 50], ["Infinity", 50], ["-1", 0], ["101", 100], ["33.3", 33]]) {
+    assert.equal(parseSettingsFromUrl("https://example.com/?toneBalance=" + input).toneBalance, expected);
+  }
+});
+
+test("old saved settings and URLs retain their tone balance", () => {
+  const { toneBalance, ...old } = createDefaultSettings();
+  assert.equal(normalizeSettings({ ...old, version: 5 }).toneBalance, 0);
+  assert.equal(normalizeSettings(old).toneBalance, 50);
+  assert.equal(parseSettingsFromUrl("https://example.com/?settings=1").toneBalance, 0);
   for (const recovery of [0, 0.5, 1]) {
-    const url = getPreviewSettingsUrl(settings, "http://localhost:4173/?utm_source=test#preview", recovery);
-    assert.equal(parseDevChromaRecovery(url), recovery);
-    assert.deepEqual(parseSettingsFromUrl(url), settings);
-    assert.equal(new URL(url).hash, "#preview");
-    assert.equal(new URL(url).searchParams.get("utm_source"), "test");
+    assert.equal(parseSettingsFromUrl("http://localhost:4173/?devChromaRecovery=" + recovery).toneBalance, recovery * 100);
   }
-  for (const origin of ["https://example.com", "http://127.0.0.1:4173", "https://localhost.example.com"]) {
-    const input = origin + "/?devChromaRecovery=1";
-    assert.equal(parseDevChromaRecovery(input), 0);
-    assert.equal(new URL(getPreviewSettingsUrl(settings, input, 1)).searchParams.has("devChromaRecovery"), false);
-  }
+  assert.equal(parseSettingsFromUrl("http://localhost:4173/?toneBalance=73&devChromaRecovery=1").toneBalance, 73);
+  assert.equal(parseSettingsFromUrl("https://example.com/?settings=1&devChromaRecovery=1").toneBalance, 0);
 });
 
 test("zero-chroma rows and black/white endpoints match the neutral reference", () => {
@@ -491,6 +499,7 @@ test("high-chroma custom and S curves keep colored rows aligned across hue sets"
         ...createDefaultSettings(),
         baseHue,
         hueCount,
+        toneBalance: 0,
         stepCount: 30,
         lightnessCurveMode: mode,
         lightnessCurve: { start: 0, middle: 0.45, end: 1 },
@@ -797,7 +806,7 @@ test("legacy settings migrate only the old hue and preserve unrelated settings",
     "#F9FAF7",
   );
 
-  assert.equal(settings.version, 5);
+  assert.equal(settings.version, 6);
   assert.equal(settings.baseHue, 259.8);
   assert.equal(settings.paletteBackground, "#101010");
   assert.equal(settings.hueCount, 6);

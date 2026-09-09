@@ -11,9 +11,7 @@ import {
   normalizeSettings,
 } from "./palette-model.mjs";
 import {
-  DEV_CHROMA_RECOVERY_DEFAULT,
-  getPreviewSettingsUrl,
-  parseDevChromaRecovery,
+  getSettingsUrl,
   parseSettingsFromUrl,
 } from "./settings-url.mjs";
 
@@ -49,7 +47,6 @@ const elements = {
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
   grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
   grayscalePreview: document.querySelector("#grayscale-preview"),
-  toneBalanceSection: document.querySelector("#tone-balance-section"),
   toneBalance: document.querySelector("#tone-balance"),
   toneBalanceValue: document.querySelector("#tone-balance-value"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
@@ -116,7 +113,6 @@ let paletteCacheKey = null;
 let paletteCache = null;
 let paletteDom = null;
 let grayscalePreviewEnabled = false;
-let chromaRecovery = parseDevChromaRecovery(window.location.href);
 const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
@@ -141,7 +137,7 @@ function getCurveKey(curveType) {
 }
 
 function syncSettingsUrl() {
-  const nextUrl = getPreviewSettingsUrl(state, window.location.href, chromaRecovery);
+  const nextUrl = getSettingsUrl(state, window.location.href);
 
   if (nextUrl === window.location.href) {
     return nextUrl;
@@ -180,7 +176,8 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    version: 5,
+    version: 6,
+    toneBalance: state.toneBalance,
     baseHue: state.baseHue,
     chromaCurve: { ...state.chromaCurve },
     lightnessCurve: { ...state.lightnessCurve },
@@ -406,7 +403,7 @@ function updateGrayscalePreview() {
 }
 
 function syncToneBalanceControl() {
-  const value = Math.round(chromaRecovery * 100);
+  const value = state.toneBalance;
   elements.toneBalance.value = String(value);
   elements.toneBalanceValue.textContent = String(value);
   elements.toneBalance.setAttribute(
@@ -418,7 +415,6 @@ function syncToneBalanceControl() {
 
 function syncGrayscalePreviewAvailability() {
   elements.grayscalePreviewSection.hidden = !isLocalhost;
-  elements.toneBalanceSection.hidden = !isLocalhost;
   if (!isLocalhost) {
     grayscalePreviewEnabled = false;
     updateGrayscalePreview();
@@ -433,7 +429,8 @@ function readSettingsFromControls() {
   return normalizeSettings(
     {
       ...state,
-      version: 5,
+      version: 6,
+      toneBalance: Number(elements.toneBalance.value),
       baseHue: Number(elements.baseHue.value),
       lightnessCurveMode,
       lightnessSCurve: {
@@ -719,7 +716,7 @@ function getPaletteCacheKey() {
     state.lightnessSCurve.amount,
     state.hueCount,
     state.stepCount,
-    chromaRecovery,
+    state.toneBalance,
   ].join("|");
 }
 
@@ -727,7 +724,7 @@ function getPaletteForState() {
   const nextKey = getPaletteCacheKey();
   if (nextKey !== paletteCacheKey) {
     paletteCacheKey = nextKey;
-    paletteCache = generatePalette(state, { chromaRecovery });
+    paletteCache = generatePalette(state);
   }
 
   return paletteCache;
@@ -1054,7 +1051,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
   const nextSettingsInput = {
     ...state,
-    version: 5,
+    version: 6,
   };
 
   if (isLightnessSCurve) {
@@ -1177,7 +1174,6 @@ function bindCurveEditor(curveType) {
 
 function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
-  chromaRecovery = isLocalhost ? DEV_CHROMA_RECOVERY_DEFAULT : 0;
   syncControls();
   syncSettingsUrl();
   schedulePaletteRender();
@@ -1193,6 +1189,7 @@ function bindEvents() {
     elements.stepCount,
     elements.gap,
     elements.lightnessSCurveAmount,
+    elements.toneBalance,
   ].forEach((input) =>
     input.addEventListener("input", () => renderFromControls(input)),
   );
@@ -1212,12 +1209,6 @@ function bindEvents() {
     renderFromControls(elements.showGamutWarnings);
   });
   if (isLocalhost) {
-    elements.toneBalance.addEventListener("input", () => {
-      chromaRecovery = clamp(Number(elements.toneBalance.value) / 100, 0, 1);
-      syncToneBalanceControl();
-      syncSettingsUrl();
-      schedulePaletteRender();
-    });
     elements.grayscalePreview.addEventListener("change", () => {
       grayscalePreviewEnabled = elements.grayscalePreview.checked;
       updateGrayscalePreview();
