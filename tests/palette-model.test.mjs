@@ -447,7 +447,11 @@ test("public tone balance is normalized, persisted and shared on every host", ()
     assert.deepEqual(generatePalette(settings), generatePalette(settings, { chromaRecovery: toneBalance / 100 }));
     for (const origin of ["https://example.com", "http://localhost:4173", "http://127.0.0.1:4173"]) {
       const url = getSettingsUrl(settings, origin + "/?devChromaRecovery=1&utm_source=test#preview");
-      assert.deepEqual(parseSettingsFromUrl(url), settings);
+      const expectedSettings =
+        new URL(origin).hostname === "localhost"
+          ? settings
+          : { ...settings, showGamutWarnings: false };
+      assert.deepEqual(parseSettingsFromUrl(url), expectedSettings);
       assert.equal(new URL(url).searchParams.has("devChromaRecovery"), false);
       assert.equal(new URL(url).searchParams.get("utm_source"), "test");
       assert.equal(new URL(url).hash, "#preview");
@@ -941,18 +945,49 @@ test("settings URL round-trips every shareable setting", () => {
     "hueCount",
     "stepCount",
     "gap",
-    "showGamutWarnings",
   ];
 
   assert.equal(parsedUrl.searchParams.get("settings"), SETTINGS_URL_VERSION);
   assert.equal(parsedUrl.searchParams.get("paletteBackground"), "#1A2B3C");
-  assert.equal(parsedUrl.searchParams.get("showGamutWarnings"), "0");
+  assert.equal(parsedUrl.searchParams.has("showGamutWarnings"), false);
   assert.equal(parsedUrl.searchParams.get("utm_source"), "share");
   assert.match(url, /paletteBackground=%231A2B3C/);
   expectedParameters.forEach((name) => {
     assert.equal(parsedUrl.searchParams.has(name), true, name + " should be in URL");
   });
   assert.deepEqual(parseSettingsFromUrl(url), settings);
+});
+
+test("gamut warning visibility is limited to localhost settings URLs", () => {
+  const settings = normalizeSettings({
+    ...createDefaultSettings(),
+    showGamutWarnings: true,
+  });
+  const publicUrl = getSettingsUrl(
+    settings,
+    "https://example.test/palette?showGamutWarnings=0",
+  );
+  const developmentUrl = getSettingsUrl(
+    settings,
+    "http://localhost:4173/palette",
+  );
+
+  assert.equal(new URL(publicUrl).searchParams.has("showGamutWarnings"), false);
+  assert.equal(
+    parseSettingsFromUrl(
+      "https://example.test/palette?settings=1&showGamutWarnings=1",
+    ).showGamutWarnings,
+    false,
+  );
+  assert.equal(
+    hasSettingsInUrl("https://example.test/palette?showGamutWarnings=1"),
+    false,
+  );
+  assert.equal(
+    new URL(developmentUrl).searchParams.get("showGamutWarnings"),
+    "1",
+  );
+  assert.equal(parseSettingsFromUrl(developmentUrl).showGamutWarnings, true);
 });
 
 test("settings URL parsing falls back safely for missing or invalid values", () => {
@@ -964,7 +999,13 @@ test("settings URL parsing falls back safely for missing or invalid values", () 
   assert.equal(hasSettingsInUrl(url), true);
   assert.equal(parsed.baseHue, defaults.baseHue);
   assert.equal(parsed.paletteBackground, defaults.paletteBackground);
-  assert.equal(parsed.showGamutWarnings, defaults.showGamutWarnings);
+  assert.equal(parsed.showGamutWarnings, false);
+  assert.equal(
+    parseSettingsFromUrl(
+      "http://localhost:4173/palette?settings=1&showGamutWarnings=unknown",
+    ).showGamutWarnings,
+    defaults.showGamutWarnings,
+  );
   assert.equal(parseSettingsFromUrl("https://example.test/palette"), null);
   assert.equal(hasSettingsInUrl("https://example.test/palette"), false);
 });
