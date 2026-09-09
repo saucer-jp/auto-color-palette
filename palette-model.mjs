@@ -47,10 +47,10 @@ const SRGB_EPSILON = 0.00001;
 // rendered HEX value. The margin is intentionally small so it does not
 // noticeably reduce the requested chroma.
 const SRGB_OUTPUT_GAMUT_MARGIN = 0.0001;
-// 22 iterations are enough to make the tone correction precise while keeping
-// the largest supported palette responsive during slider updates.
-const TONE_MATCH_ITERATIONS = 22;
-const TONE_MATCH_EPSILON = 1e-9;
+// Search the shared chroma boundary once per row, preserving both OKLab
+// lightness and chroma across hues before the final 8-bit HEX rounding.
+const GAMUT_SEARCH_ITERATIONS = 22;
+const CHROMA_MATCH_EPSILON = 1e-9;
 
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -300,6 +300,8 @@ export function getSrgbLightness(hex) {
 }
 
 export function getPerceptualTone(hex) {
+  // Lightness component only. Uniform colored rows also need matching C;
+  // this scalar alone cannot evaluate their overall tonal consistency.
   return getSrgbLightness(hex);
 }
 
@@ -441,116 +443,50 @@ export function oklchToHex(L, C, H) {
   return rgbToHex(rgb.r, rgb.g, rgb.b);
 }
 
-function getOklchPerceptualTone(L, C, cosHue, sinHue) {
-  return getSrgbOklabLightness(
-    oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
-  );
-}
-
-function isToneReachable(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
-
-  return (
-    targetTone >= darkestTone - TONE_MATCH_EPSILON &&
-    targetTone <= lightestTone + TONE_MATCH_EPSILON
-  );
-}
-
-function solveLightnessForTone(targetTone, C, cosHue, sinHue) {
-  const darkestTone = getOklchPerceptualTone(0, C, cosHue, sinHue);
-  const lightestTone = getOklchPerceptualTone(1, C, cosHue, sinHue);
-
-  if (targetTone <= darkestTone + TONE_MATCH_EPSILON) {
-    return 0;
-  }
-  if (targetTone >= lightestTone - TONE_MATCH_EPSILON) {
-    return 1;
-  }
-
-  let lower = 0;
-  let upper = 1;
-
-  for (let iteration = 0; iteration < TONE_MATCH_ITERATIONS; iteration += 1) {
-    const middle = (lower + upper) / 2;
-    const tone = getOklchPerceptualTone(middle, C, cosHue, sinHue);
-
-    if (tone < targetTone) {
-      lower = middle;
-    } else {
-      upper = middle;
-    }
-  }
-
-  return (lower + upper) / 2;
-}
-
-function solveToneAtChroma(targetTone, C, cosHue, sinHue) {
-  if (!isToneReachable(targetTone, C, cosHue, sinHue)) {
-    return null;
-  }
-
-  const L = solveLightnessForTone(targetTone, C, cosHue, sinHue);
-
-  return {
-    L,
-    C,
-    rgb: oklchToSrgbWithHueVector(L, C, cosHue, sinHue),
-  };
-}
-
-function matchOklchTone(targetTone, requestedChroma, cosHue, sinHue) {
+function getSharedRowChroma(L, requestedChroma, hues) {
   const normalizedChroma = clamp(
     requestedChroma,
     LIMITS.chroma.min,
     LIMITS.chroma.max,
   );
-  const requestedColor = solveToneAtChroma(
-    targetTone,
-    normalizedChroma,
-    cosHue,
-    sinHue,
-  );
+  const fitsEveryHue = (C) =>
+    hues.every(({ cosHue, sinHue }) =>
+      isSrgbSafeForOutput(oklchToSrgbWithHueVector(L, C, cosHue, sinHue)),
+    );
 
-  if (requestedColor && isSrgbSafeForOutput(requestedColor.rgb)) {
-    return {
-      ...requestedColor,
-      wasGamutAdjusted: false,
-    };
+  // Black and white cannot carry chroma. Also allow neutral endpoints that
+  // sit outside the small safety margin used for chromatic output.
+  if (normalizedChroma === 0 || !fitsEveryHue(0)) {
+    return 0;
   }
 
-  // Some combinations of high chroma, extreme lightness, and hue cannot
-  // produce the row's target tone inside sRGB. Reduce chroma only in that
-  // case, keeping the most colorful tone-matched color that is possible.
+  if (fitsEveryHue(normalizedChroma)) {
+    return normalizedChroma;
+  }
+
+  // Per-hue gamut clipping preserves L but leaves some hues much more
+  // colorful than their neighbours. Use the largest C supported by every
+  // displayed hue at this L, so gamut mapping preserves the row's L AND C.
+  // In-gamut OKLCH already has OKLab lightness L; no nested lightness solve
+  // or grayscale-filter matching is needed.
   let lower = LIMITS.chroma.min;
   let upper = normalizedChroma;
-  let bestColor = solveToneAtChroma(targetTone, lower, cosHue, sinHue);
 
   for (
     let iteration = 0;
-    iteration < TONE_MATCH_ITERATIONS;
+    iteration < GAMUT_SEARCH_ITERATIONS;
     iteration += 1
   ) {
     const middle = (lower + upper) / 2;
-    const candidate = solveToneAtChroma(
-      targetTone,
-      middle,
-      cosHue,
-      sinHue,
-    );
 
-    if (candidate && isSrgbSafeForOutput(candidate.rgb)) {
+    if (fitsEveryHue(middle)) {
       lower = middle;
-      bestColor = candidate;
     } else {
       upper = middle;
     }
   }
 
-  return {
-    ...bestColor,
-    wasGamutAdjusted: lower < normalizedChroma - TONE_MATCH_EPSILON,
-  };
+  return lower;
 }
 
 function sign(value) {
@@ -822,36 +758,24 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
   };
 }
 
-function createToneMatchedSwatchColor(
-  C,
-  H,
-  cosHue,
-  sinHue,
-  targetTone,
-) {
-  const matchedColor = matchOklchTone(targetTone, C, cosHue, sinHue);
-
-  return {
-    ...createSwatchColor(
-      matchedColor.L,
-      matchedColor.C,
-      H,
-      cosHue,
-      sinHue,
-    ),
-    // The generated color is kept in sRGB, so this flag indicates that the
-    // requested tone/chroma combination needed gamut adjustment.
-    isOutOfSrgbGamut: matchedColor.wasGamutAdjusted,
-  };
-}
-
 export function generatePalette(settings) {
   const columns = [];
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
-  // The curves provide each row's target. Hue columns compensate their
-  // colored, rendered sRGB OKLab lightness against the neutral reference.
+  const hues = Array.from({ length: settings.hueCount }, (_, hueIndex) => {
+    const hueOffset = (hueIndex * 360) / settings.hueCount;
+    const hue = wrapHue(settings.baseHue + hueOffset);
+    const hueRadians = (hue * Math.PI) / 180;
+    return {
+      hue,
+      hueOffset,
+      cosHue: Math.cos(hueRadians),
+      sinHue: Math.sin(hueRadians),
+    };
+  });
+  // L targets the rendered neutral reference; C is an upper bound shared
+  // by the hue columns, reduced together when the row exceeds sRGB.
   const lightnessEvaluator = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -863,11 +787,15 @@ export function generatePalette(settings) {
   for (let stepIndex = 0; stepIndex < stepCount; stepIndex += 1) {
     const progress = stepIndex / stepDenominator;
     const lightness = lightnessEvaluator(progress);
+    const targetTone = getPerceptualTone(oklchToHex(lightness, 0, 0));
+    const requestedChroma = chromaEvaluator(progress);
+    const sharedChroma = getSharedRowChroma(targetTone, requestedChroma, hues);
     steps.push({
       progress,
       L: lightness,
-      C: chromaEvaluator(progress),
-      targetTone: getPerceptualTone(oklchToHex(lightness, 0, 0)),
+      C: sharedChroma,
+      targetTone,
+      wasGamutAdjusted: sharedChroma < requestedChroma - CHROMA_MATCH_EPSILON,
     });
   }
 
@@ -895,23 +823,20 @@ export function generatePalette(settings) {
     });
   }
 
-  for (let hueIndex = 0; hueIndex < settings.hueCount; hueIndex += 1) {
-    const hueOffset = (hueIndex * 360) / settings.hueCount;
-    const hue = wrapHue(settings.baseHue + hueOffset);
-    const hueRadians = (hue * Math.PI) / 180;
-    const cosHue = Math.cos(hueRadians);
-    const sinHue = Math.sin(hueRadians);
+  for (const { hue, hueOffset, cosHue, sinHue } of hues) {
     const swatches = [];
 
-    steps.forEach(({ progress, C, targetTone }, stepIndex) => {
+    steps.forEach(({ progress, C, targetTone, wasGamutAdjusted }, stepIndex) => {
       const swatch = {
-        ...createToneMatchedSwatchColor(
+        ...createSwatchColor(
+          targetTone,
           C,
           hue,
           cosHue,
           sinHue,
-          targetTone,
         ),
+        // Includes colors reduced to match another hue's sRGB limit.
+        isOutOfSrgbGamut: wasGamutAdjusted,
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,

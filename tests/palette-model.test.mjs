@@ -20,6 +20,7 @@ import {
   normalizeSettings,
   oklchToSrgb,
   serializePaletteExport,
+  srgbToOklch,
 } from "../palette-model.mjs";
 import {
   SETTINGS_URL_VERSION,
@@ -141,7 +142,7 @@ test("palette generation uses absolute hues and grayscale chroma zero", () => {
   assert.ok(palette.columns[0].swatches.every((swatch) => swatch.C === 0));
 });
 
-test("palette generation keeps each row's colored perceptual tone uniform", () => {
+test("palette generation keeps each row's colored OKLab lightness uniform", () => {
   const settings = {
     ...createDefaultSettings(),
     baseHue: 170,
@@ -218,6 +219,150 @@ test("colored tone uses perceptual OKLab lightness", () => {
   assert.ok(Math.abs(getPerceptualTone("#FF0000") - 0.6279553606) < 1e-9);
   assert.ok(Math.abs(getPerceptualTone("#00FF00") - 0.8664396115) < 1e-9);
   assert.ok(Math.abs(getPerceptualTone("#0000FF") - 0.4520137184) < 1e-9);
+});
+
+test("default rows retain matching colored chroma after sRGB gamut mapping", () => {
+  const settings = createDefaultSettings();
+  const palette = generatePalette(settings);
+
+  for (let rowIndex = 0; rowIndex < settings.stepCount; rowIndex += 1) {
+    const colors = palette.columns.slice(1).map((column) =>
+      srgbToOklch(column.swatches[rowIndex].hex),
+    );
+    const chromas = colors.map((color) => color.C);
+    const spread = Math.max(...chromas) - Math.min(...chromas);
+
+    // Previously the displayed row's C spread reached 0.149 even though L
+    // was aligned. Permit only the residual from 8-bit channel rounding.
+    assert.ok(spread <= 0.004, `row ${rowIndex + 1}: chroma spread ${spread}`);
+    assert.ok(Math.min(...chromas) > 0.005, "keep the row colored");
+  }
+});
+
+test("shared row chroma retains requests that fit and reaches the common gamut limit", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    lightnessCurve: { start: 0.3, middle: 0.6, end: 0.85 },
+    chromaCurve: { start: 0.02, middle: 0.4, end: 0.02 },
+    stepCount: 5,
+  };
+  const palette = generatePalette(settings);
+
+  for (const rowIndex of [0, 4]) {
+    for (const column of palette.columns.slice(1)) {
+      assert.equal(column.swatches[rowIndex].C, 0.02);
+      assert.equal(column.swatches[rowIndex].isOutOfSrgbGamut, false);
+    }
+  }
+
+  const middleRow = palette.columns.slice(1).map((column) => column.swatches[2]);
+  assert.ok(middleRow.every((swatch) => swatch.C > 0.09 && swatch.C < 0.4));
+  assert.ok(middleRow.every((swatch) => swatch.isOutOfSrgbGamut));
+  assert.ok(
+    middleRow.some(({ L, C, H }) =>
+      !isSrgbInGamut(oklchToSrgb(L, C + 0.0001, H)),
+    ),
+    "do not desaturate further than the limiting hue requires",
+  );
+});
+
+test("common gamut uses the displayed hues rather than unrelated hues", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    baseHue: 0,
+    hueCount: 2,
+    lightnessCurve: { start: 0.5, middle: 0.5, end: 0.5 },
+    chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+    stepCount: 5,
+  };
+  const pair = generatePalette(settings);
+  const full = generatePalette({ ...settings, hueCount: 24 });
+  assert.ok(
+    pair.columns[1].swatches[0].C > full.columns[1].swatches[0].C + 0.003,
+  );
+});
+
+test("colored row uniformity does not require identical CSS grayscale output", () => {
+  const palette = generatePalette(createDefaultSettings());
+  const row = palette.columns.slice(1).map((column) => column.swatches[5].hex);
+  const grayscale = row.map(getSrgbGrayscaleTone);
+  const lightness = row.map(getPerceptualTone);
+  const chroma = row.map((hex) => srgbToOklch(hex).C);
+
+  assert.ok(Math.max(...lightness) - Math.min(...lightness) <= 0.004);
+  assert.ok(Math.max(...chroma) - Math.min(...chroma) <= 0.004);
+  assert.ok(Math.max(...grayscale) - Math.min(...grayscale) > 0.01);
+});
+
+test("zero-chroma rows and black/white endpoints match the neutral reference", () => {
+  for (const C of [0, 0.4]) {
+    const palette = generatePalette({
+      ...createDefaultSettings(),
+      lightnessCurve: { start: 0, middle: 0.5, end: 1 },
+      chromaCurve: { start: C, middle: C, end: C },
+      stepCount: 5,
+    });
+    assert.equal(palette.columns[0].swatches[0].hex, "#000000");
+    assert.equal(palette.columns[0].swatches[4].hex, "#FFFFFF");
+
+    for (const rowIndex of C === 0 ? [0, 1, 2, 3, 4] : [0, 4]) {
+      for (const column of palette.columns.slice(1)) {
+        const swatch = column.swatches[rowIndex];
+        assert.equal(swatch.C, 0);
+        assert.equal(swatch.hex, palette.columns[0].swatches[rowIndex].hex);
+        assert.equal(swatch.isOutOfSrgbGamut, C > 0);
+      }
+    }
+  }
+});
+
+test("high-chroma custom and S curves keep colored rows aligned across hue sets", () => {
+  for (const [baseHue, hueCount] of [[0, 2], [12.3, 7], [170, 10], [259.8, 24]]) {
+    for (const mode of Object.values(LIGHTNESS_CURVE_MODES)) {
+      const palette = generatePalette({
+        ...createDefaultSettings(),
+        baseHue,
+        hueCount,
+        stepCount: 30,
+        lightnessCurveMode: mode,
+        lightnessCurve: { start: 0, middle: 0.45, end: 1 },
+        lightnessSCurve: { start: 0, middle: 0.65, end: 1, amount: 1 },
+        chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+      });
+      for (let rowIndex = 0; rowIndex < 30; rowIndex += 1) {
+        const swatches = palette.columns.slice(1).map((column) =>
+          column.swatches[rowIndex],
+        );
+        const colors = swatches.map(({ hex }) => srgbToOklch(hex));
+        // Near black, 8-bit sRGB has only a few channel levels and the
+        // OKLab cube root magnifies a one-code rounding difference. Check
+        // exact pre-encoding L/C there, with a separate quantization budget.
+        const tolerance = swatches[0].L < 0.15 ? 0.02 : 0.004;
+        for (const key of ["L", "C"]) {
+          assert.ok(
+            swatches.every((swatch) => swatch[key] === swatches[0][key]),
+          );
+          const values = colors.map((color) => color[key]);
+          const spread = Math.max(...values) - Math.min(...values);
+          assert.ok(
+            spread <= tolerance,
+            `${mode}/${baseHue}/${rowIndex}: ${key} spread ${spread}`,
+          );
+        }
+        for (const { L, C, H } of swatches) {
+          const rgb = oklchToSrgb(
+            Number(L.toFixed(6)),
+            Number(C.toFixed(6)),
+            Number(H.toFixed(6)),
+          );
+          assert.ok(
+            isSrgbInGamut(rgb),
+            `${mode}/${baseHue}/${rowIndex}: stays in sRGB`,
+          );
+        }
+      }
+    }
+  }
 });
 
 test("tone-matched hue colors stay in sRGB for consistent rendering", () => {
