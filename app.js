@@ -10,7 +10,12 @@ import {
   normalizeHex,
   normalizeSettings,
 } from "./palette-model.mjs";
-import { getSettingsUrl, parseSettingsFromUrl } from "./settings-url.mjs";
+import {
+  DEV_CHROMA_RECOVERY_DEFAULT,
+  getPreviewSettingsUrl,
+  parseDevChromaRecovery,
+  parseSettingsFromUrl,
+} from "./settings-url.mjs";
 
 const DEFAULT_PALETTE_BACKGROUNDS = Object.freeze({
   light: "#F9FAF7",
@@ -44,6 +49,9 @@ const elements = {
   showGamutWarnings: document.querySelector("#show-gamut-warnings"),
   grayscalePreviewSection: document.querySelector("#grayscale-preview-section"),
   grayscalePreview: document.querySelector("#grayscale-preview"),
+  toneBalanceSection: document.querySelector("#tone-balance-section"),
+  toneBalance: document.querySelector("#tone-balance"),
+  toneBalanceValue: document.querySelector("#tone-balance-value"),
   gamutWarningCount: document.querySelector("#gamut-warning-count"),
   lightnessCurveModes: [
     ...document.querySelectorAll('input[name="lightness-curve-mode"]'),
@@ -108,6 +116,7 @@ let paletteCacheKey = null;
 let paletteCache = null;
 let paletteDom = null;
 let grayscalePreviewEnabled = false;
+let chromaRecovery = parseDevChromaRecovery(window.location.href);
 const swatchMetadata = new WeakMap();
 
 function formatDegree(degree) {
@@ -132,7 +141,7 @@ function getCurveKey(curveType) {
 }
 
 function syncSettingsUrl() {
-  const nextUrl = getSettingsUrl(state, window.location.href);
+  const nextUrl = getPreviewSettingsUrl(state, window.location.href, chromaRecovery);
 
   if (nextUrl === window.location.href) {
     return nextUrl;
@@ -376,6 +385,7 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   elements.gapValue.textContent = state.gap + "px";
   elements.showGamutWarnings.checked = state.showGamutWarnings;
   elements.grayscalePreview.checked = grayscalePreviewEnabled;
+  syncToneBalanceControl();
 
   updateRangeProgress(elements.baseHue);
   updateRangeProgress(elements.hueCount);
@@ -395,8 +405,20 @@ function updateGrayscalePreview() {
   );
 }
 
+function syncToneBalanceControl() {
+  const value = Math.round(chromaRecovery * 100);
+  elements.toneBalance.value = String(value);
+  elements.toneBalanceValue.textContent = String(value);
+  elements.toneBalance.setAttribute(
+    "aria-valuetext",
+    value === 0 ? "0、均質さ優先" : value + "、大きいほど鮮やかさを優先",
+  );
+  updateRangeProgress(elements.toneBalance);
+}
+
 function syncGrayscalePreviewAvailability() {
   elements.grayscalePreviewSection.hidden = !isLocalhost;
+  elements.toneBalanceSection.hidden = !isLocalhost;
   if (!isLocalhost) {
     grayscalePreviewEnabled = false;
     updateGrayscalePreview();
@@ -697,6 +719,7 @@ function getPaletteCacheKey() {
     state.lightnessSCurve.amount,
     state.hueCount,
     state.stepCount,
+    chromaRecovery,
   ].join("|");
 }
 
@@ -704,7 +727,7 @@ function getPaletteForState() {
   const nextKey = getPaletteCacheKey();
   if (nextKey !== paletteCacheKey) {
     paletteCacheKey = nextKey;
-    paletteCache = generatePalette(state);
+    paletteCache = generatePalette(state, { chromaRecovery });
   }
 
   return paletteCache;
@@ -1154,6 +1177,7 @@ function bindCurveEditor(curveType) {
 
 function resetSettings() {
   Object.assign(state, createDefaultSettings(getDefaultPaletteBackground()));
+  chromaRecovery = isLocalhost ? DEV_CHROMA_RECOVERY_DEFAULT : 0;
   syncControls();
   syncSettingsUrl();
   schedulePaletteRender();
@@ -1188,6 +1212,12 @@ function bindEvents() {
     renderFromControls(elements.showGamutWarnings);
   });
   if (isLocalhost) {
+    elements.toneBalance.addEventListener("input", () => {
+      chromaRecovery = clamp(Number(elements.toneBalance.value) / 100, 0, 1);
+      syncToneBalanceControl();
+      syncSettingsUrl();
+      schedulePaletteRender();
+    });
     elements.grayscalePreview.addEventListener("change", () => {
       grayscalePreviewEnabled = elements.grayscalePreview.checked;
       updateGrayscalePreview();

@@ -51,6 +51,10 @@ const SRGB_OUTPUT_GAMUT_MARGIN = 0.0001;
 // lightness and chroma across hues before the final 8-bit HEX rounding.
 const GAMUT_SEARCH_ITERATIONS = 22;
 const CHROMA_MATCH_EPSILON = 1e-9;
+// Experimental visual-tuning budgets, not perceptual thresholds. The upper
+// half of the recovery control can scale these base budgets up to 2x.
+const BASE_RELATIVE_CHROMA_RECOVERY = 0.75;
+const BASE_ABSOLUTE_CHROMA_RECOVERY = 0.08;
 
 export function clamp(value, min, max) {
   return Math.min(Math.max(value, min), max);
@@ -489,6 +493,32 @@ function getSharedRowChroma(L, requestedChroma, hues) {
   return lower;
 }
 
+function recoverHueChroma(L, sharedChroma, requestedChroma, hue, recovery) {
+  if (recovery === 0 || sharedChroma === 0 || sharedChroma === requestedChroma) {
+    return sharedChroma;
+  }
+
+  const availableChroma = getSharedRowChroma(L, requestedChroma, [hue]);
+  const availableGain = Math.max(0, availableChroma - sharedChroma);
+  const recoverableChroma = Math.min(
+    availableGain,
+    sharedChroma * BASE_RELATIVE_CHROMA_RECOVERY,
+    BASE_ABSOLUTE_CHROMA_RECOVERY,
+  );
+  // Keep 0–50 unchanged. A quadratic boost above 50 has zero slope at the
+  // join, avoiding a sudden jump in chroma as the slider crosses its midpoint.
+  const boost = Math.max(0, 2 * recovery - 1) ** 2;
+  const recoveryStrength = recovery + boost;
+  // Broaden the bell at high recovery, retaining endpoint suppression while
+  // giving dark/light colors more room. At 100, strength is 2 and exponent 1.
+  const lightnessWeight = (4 * L * (1 - L)) ** (2 - boost);
+  const recoveredGain = Math.min(
+    availableGain,
+    recoverableChroma * recoveryStrength * lightnessWeight,
+  );
+  return sharedChroma + recoveredGain;
+}
+
 function sign(value) {
   return value === 0 ? 0 : value > 0 ? 1 : -1;
 }
@@ -758,7 +788,8 @@ function createSwatchColor(L, C, H, cosHue, sinHue) {
   };
 }
 
-export function generatePalette(settings) {
+export function generatePalette(settings, { chromaRecovery = 0 } = {}) {
+  const recovery = clamp(finiteNumber(chromaRecovery, 0), 0, 1);
   const columns = [];
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
@@ -774,8 +805,8 @@ export function generatePalette(settings) {
       sinHue: Math.sin(hueRadians),
     };
   });
-  // L targets the rendered neutral reference; C is an upper bound shared
-  // by the hue columns, reduced together when the row exceeds sRGB.
+  // L targets the rendered neutral reference. The common C is the baseline
+  // for optional, bounded per-hue recovery; requested C stays an upper bound.
   const lightnessEvaluator = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -795,7 +826,7 @@ export function generatePalette(settings) {
       L: lightness,
       C: sharedChroma,
       targetTone,
-      wasGamutAdjusted: sharedChroma < requestedChroma - CHROMA_MATCH_EPSILON,
+      requestedChroma,
     });
   }
 
@@ -823,20 +854,25 @@ export function generatePalette(settings) {
     });
   }
 
-  for (const { hue, hueOffset, cosHue, sinHue } of hues) {
+  for (const hueVector of hues) {
+    const { hue, hueOffset, cosHue, sinHue } = hueVector;
     const swatches = [];
 
-    steps.forEach(({ progress, C, targetTone, wasGamutAdjusted }, stepIndex) => {
+    steps.forEach(({ progress, C, targetTone, requestedChroma }, stepIndex) => {
+      const recoveredChroma = recoverHueChroma(
+        targetTone, C, requestedChroma, hueVector, recovery,
+      );
       const swatch = {
         ...createSwatchColor(
           targetTone,
-          C,
+          recoveredChroma,
           hue,
           cosHue,
           sinHue,
         ),
         // Includes colors reduced to match another hue's sRGB limit.
-        isOutOfSrgbGamut: wasGamutAdjusted,
+        isOutOfSrgbGamut:
+          recoveredChroma < requestedChroma - CHROMA_MATCH_EPSILON,
         stepIndex,
         stepNumber: stepIndex + 1,
         progress,

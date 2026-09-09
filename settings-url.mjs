@@ -4,6 +4,9 @@ import {
 } from "./palette-model.mjs";
 
 export const SETTINGS_URL_VERSION = "1";
+export const DEV_CHROMA_RECOVERY_DEFAULT = 0.5;
+
+const DEV_CHROMA_RECOVERY_PARAMETER = "devChromaRecovery";
 
 const SETTINGS_MARKER = "settings";
 const URL_PARAMETER_NAMES = Object.freeze([
@@ -30,6 +33,38 @@ function toUrl(input) {
   return input instanceof URL
     ? new URL(input.href)
     : new URL(String(input), "https://auto-color-palette.invalid/");
+}
+
+function normalizeDevChromaRecovery(value) {
+  const number =
+    value === null || String(value).trim() === "" ? NaN : Number(value);
+  return Number.isFinite(number)
+    ? Math.round(Math.min(1, Math.max(0, number)) * 100) / 100
+    : DEV_CHROMA_RECOVERY_DEFAULT;
+}
+
+export function parseDevChromaRecovery(input) {
+  const url = toUrl(input);
+  return url.hostname === "localhost"
+    ? normalizeDevChromaRecovery(
+        url.searchParams.get(DEV_CHROMA_RECOVERY_PARAMETER),
+      )
+    : 0;
+}
+
+// Keep experimental rendering options out of the public settings schema and
+// localStorage, but include them in localhost URLs so previews reproduce.
+export function getPreviewSettingsUrl(settings, currentUrl, chromaRecovery) {
+  const url = toUrl(getSettingsUrl(settings, currentUrl));
+  if (url.hostname === "localhost") {
+    url.searchParams.set(
+      DEV_CHROMA_RECOVERY_PARAMETER,
+      String(normalizeDevChromaRecovery(chromaRecovery)),
+    );
+  } else {
+    url.searchParams.delete(DEV_CHROMA_RECOVERY_PARAMETER);
+  }
+  return url.toString();
 }
 
 function setNumberParameter(parameters, name, value) {

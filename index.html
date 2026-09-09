@@ -356,6 +356,33 @@
               </div>
             </div>
 
+            <div class="settings-section" id="tone-balance-section" hidden>
+              <div class="control-field">
+                <div class="field-label-row">
+                  <label for="tone-balance">トーンのバランス（開発用）</label>
+                  <output id="tone-balance-value" for="tone-balance">50</output>
+                </div>
+                <input
+                  id="tone-balance"
+                  class="range-input"
+                  type="range"
+                  min="0"
+                  max="100"
+                  step="1"
+                  value="50"
+                  aria-describedby="tone-balance-help"
+                />
+                <div class="range-end-labels" aria-hidden="true">
+                  <span>均質さ</span>
+                  <span>鮮やかさ</span>
+                </div>
+                <p class="control-help" id="tone-balance-help">
+                  0で彩度を統一。右に動かすほど色相ごとの鮮やかさを戻します。
+                  明るい行・暗い行では復元を控えめにします。調整値は共有URLに含まれます。
+                </p>
+              </div>
+            </div>
+
             <div class="settings-section" id="grayscale-preview-section" hidden>
               <div class="control-field">
                 <label class="checkbox-control" for="grayscale-preview">

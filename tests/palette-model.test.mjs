@@ -23,9 +23,12 @@ import {
   srgbToOklch,
 } from "../palette-model.mjs";
 import {
+  DEV_CHROMA_RECOVERY_DEFAULT,
   SETTINGS_URL_VERSION,
+  getPreviewSettingsUrl,
   getSettingsUrl,
   hasSettingsInUrl,
+  parseDevChromaRecovery,
   parseSettingsFromUrl,
 } from "../settings-url.mjs";
 
@@ -292,6 +295,171 @@ test("colored row uniformity does not require identical CSS grayscale output", (
   assert.ok(Math.max(...lightness) - Math.min(...lightness) <= 0.004);
   assert.ok(Math.max(...chroma) - Math.min(...chroma) <= 0.004);
   assert.ok(Math.max(...grayscale) - Math.min(...grayscale) > 0.01);
+});
+
+test("chroma recovery is opt-in and zero reproduces the uniform palette", () => {
+  const settings = createDefaultSettings();
+  const uniform = generatePalette(settings);
+  for (const chromaRecovery of [0, -1, NaN, Infinity, "invalid"]) {
+    assert.deepEqual(generatePalette(settings, { chromaRecovery }), uniform);
+  }
+  assert.deepEqual(
+    generatePalette(settings, { chromaRecovery: 2 }),
+    generatePalette(settings, { chromaRecovery: 1 }),
+  );
+});
+
+test("recovery raises chroma progressively while retaining hue and lightness", () => {
+  const settings = createDefaultSettings();
+  const uniform = generatePalette(settings);
+  let previous = uniform;
+  for (const chromaRecovery of [0.25, 0.5, 0.75, 1]) {
+    const palette = generatePalette(settings, { chromaRecovery });
+    assert.deepEqual(palette.columns[0], uniform.columns[0]);
+    palette.columns.slice(1).forEach((column, columnIndex) => {
+      column.swatches.forEach((swatch, rowIndex) => {
+        const baseline = uniform.columns[columnIndex + 1].swatches[rowIndex];
+        const prior = previous.columns[columnIndex + 1].swatches[rowIndex];
+        assert.equal(swatch.L, baseline.L);
+        assert.equal(swatch.H, baseline.H);
+        assert.ok(swatch.C >= prior.C);
+        assert.ok(swatch.C <= settings.chromaCurve.start);
+        assert.ok(swatch.C - baseline.C <= 0.16 + 1e-9);
+        assert.ok(swatch.C <= baseline.C * 2.5 + 1e-9);
+      });
+    });
+    previous = palette;
+  }
+  const half = generatePalette(settings, { chromaRecovery: 0.5 });
+  assert.ok(half.columns[1].swatches[5].C > 0.13);
+  assert.ok(previous.columns[1].swatches[5].C > 0.16);
+});
+
+test("upper-half recovery raises maximum chroma while preserving the midpoint", () => {
+  const settings = createDefaultSettings();
+  const half = generatePalette(settings, { chromaRecovery: 0.5 });
+  // Established midpoint sample from the first recovery implementation.
+  assert.equal(half.columns[1].swatches[5].hex, "#4B7CCD");
+  assert.ok(Math.abs(half.columns[1].swatches[5].C - 0.1354614406) < 1e-9);
+
+  const full = generatePalette(settings, { chromaRecovery: 1 });
+  assert.equal(full.columns[1].swatches[5].C, settings.chromaCurve.middle);
+
+  const highChroma = generatePalette({
+    ...settings,
+    chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+  }, { chromaRecovery: 1 });
+  const maximum = Math.max(...highChroma.columns.slice(1).flatMap((column) =>
+    column.swatches.map(({ C }) => C),
+  ));
+  // Previously even a 0.4 request topped out below 0.18 in this palette.
+  assert.ok(maximum > 0.24);
+
+  const justAboveHalf = generatePalette(settings, { chromaRecovery: 0.500001 });
+  half.columns.slice(1).forEach((column, columnIndex) => {
+    column.swatches.forEach((swatch, rowIndex) => {
+      const next = justAboveHalf.columns[columnIndex + 1].swatches[rowIndex];
+      assert.ok(next.C >= swatch.C && next.C - swatch.C < 1e-6);
+    });
+  });
+});
+
+test("recovery is subdued near white and black compared with midtones", () => {
+  const settings = {
+    ...createDefaultSettings(),
+    stepCount: 5,
+    lightnessCurve: { start: 0.05, middle: 0.5, end: 0.95 },
+    chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+  };
+  const uniform = generatePalette(settings);
+  const recovered = generatePalette(settings, { chromaRecovery: 1 });
+  const relativeGain = (rowIndex) => {
+    const common = uniform.columns[1].swatches[rowIndex].C;
+    const maximum = Math.max(...recovered.columns.slice(1).map((column) =>
+      column.swatches[rowIndex].C,
+    ));
+    return common === 0 ? 0 : (maximum - common) / common;
+  };
+  assert.ok(relativeGain(2) > 1);
+  assert.ok(relativeGain(0) < 0.3);
+  assert.ok(relativeGain(4) < 0.3);
+});
+
+test("recovery leaves neutral endpoints and already achievable chroma intact", () => {
+  for (const chroma of [0, 0.02, 0.4]) {
+    const settings = {
+      ...createDefaultSettings(),
+      stepCount: 5,
+      lightnessCurve: { start: 0, middle: 0.5, end: 1 },
+      chromaCurve: { start: chroma, middle: chroma, end: chroma },
+    };
+    const uniform = generatePalette(settings);
+    const recovered = generatePalette(settings, { chromaRecovery: 1 });
+    recovered.columns.forEach((column, columnIndex) => {
+      for (const rowIndex of [0, 4]) {
+        assert.deepEqual(column.swatches[rowIndex], uniform.columns[columnIndex].swatches[rowIndex]);
+      }
+      if (chroma < 0.03) assert.deepEqual(column, uniform.columns[columnIndex]);
+    });
+  }
+});
+
+test("recovered high-chroma palettes keep rendered lightness and rounded metadata in gamut", () => {
+  for (const lightnessCurveMode of Object.values(LIGHTNESS_CURVE_MODES)) {
+    for (const baseHue of [12.3, 170, 259.8]) {
+      const settings = {
+        ...createDefaultSettings(),
+        baseHue,
+        hueCount: 24,
+        stepCount: 30,
+        lightnessCurveMode,
+        chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+      };
+      for (const chromaRecovery of [0.5, 1]) {
+        const palette = generatePalette(settings, { chromaRecovery });
+        let warningCount = 0;
+        palette.columns.slice(1).forEach((column) => {
+          column.swatches.forEach((swatch, rowIndex) => {
+            const rgb = oklchToSrgb(
+              Number(swatch.L.toFixed(6)),
+              Number(swatch.C.toFixed(6)),
+              Number(swatch.H.toFixed(6)),
+            );
+            assert.ok(Object.values(rgb).every((channel) => channel >= 0 && channel <= 1));
+            const reference = getPerceptualTone(palette.columns[0].swatches[rowIndex].hex);
+            assert.ok(Math.abs(getPerceptualTone(swatch.hex) - reference) <= 0.002);
+            if (swatch.isOutOfSrgbGamut) warningCount += 1;
+          });
+        });
+        assert.equal(palette.gamutWarningCount, warningCount);
+        const exported = groupPaletteByHue(palette);
+        assert.deepEqual(
+          exported.hues.map((group) => group.colors),
+          palette.columns.slice(1).map((column) => column.swatches.map(({ hex }) => hex)),
+        );
+      }
+    }
+  }
+});
+
+test("dev recovery URL values are bounded, reproducible and localhost-only", () => {
+  const settings = createDefaultSettings();
+  assert.equal(parseDevChromaRecovery("http://localhost:4173/"), DEV_CHROMA_RECOVERY_DEFAULT);
+  for (const [input, expected] of [["", 0.5], ["invalid", 0.5], ["Infinity", 0.5], ["-1", 0], ["2", 1], ["0.3333", 0.33]]) {
+    assert.equal(parseDevChromaRecovery("http://localhost:4173/?devChromaRecovery=" + input), expected);
+  }
+  for (const recovery of [0, 0.5, 1]) {
+    const url = getPreviewSettingsUrl(settings, "http://localhost:4173/?utm_source=test#preview", recovery);
+    assert.equal(parseDevChromaRecovery(url), recovery);
+    assert.deepEqual(parseSettingsFromUrl(url), settings);
+    assert.equal(new URL(url).hash, "#preview");
+    assert.equal(new URL(url).searchParams.get("utm_source"), "test");
+  }
+  for (const origin of ["https://example.com", "http://127.0.0.1:4173", "https://localhost.example.com"]) {
+    const input = origin + "/?devChromaRecovery=1";
+    assert.equal(parseDevChromaRecovery(input), 0);
+    assert.equal(new URL(getPreviewSettingsUrl(settings, input, 1)).searchParams.has("devChromaRecovery"), false);
+  }
 });
 
 test("zero-chroma rows and black/white endpoints match the neutral reference", () => {
