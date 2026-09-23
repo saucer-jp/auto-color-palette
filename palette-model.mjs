@@ -6,6 +6,7 @@ export const LIGHTNESS_CURVE_MODES = Object.freeze({
 export const DEFAULTS = Object.freeze({
   toneBalance: 50,
   baseHue: 259.8,
+  tintedGrayInfluence: 30,
   chromaCurve: Object.freeze({
     start: 0.188,
     middle: 0.188,
@@ -31,6 +32,7 @@ export const DEFAULTS = Object.freeze({
 
 export const LIMITS = Object.freeze({
   baseHue: { min: 0, max: 359.9 },
+  tintedGrayInfluence: { min: 0, max: 100 },
   chroma: { min: 0, max: 0.4 },
   lightness: { min: 0, max: 1 },
   lightnessSCurveAmount: { min: -1, max: 1 },
@@ -85,6 +87,10 @@ function normalizeDecimal(value, limits, fallback) {
     clamp(finiteNumber(value, fallback), limits.min, limits.max),
     CURVE_PRECISION,
   );
+}
+
+function isMissingOptionalNumber(value) {
+  return value == null || String(value).trim() === "";
 }
 
 export function normalizeHue(value, fallback = DEFAULTS.baseHue) {
@@ -174,9 +180,11 @@ function normalizeLightnessSCurve(curve, fallback) {
 
 export function createDefaultSettings(paletteBackground = "#F9FAF7") {
   return {
-    version: 6,
+    version: 7,
     toneBalance: DEFAULTS.toneBalance,
     baseHue: DEFAULTS.baseHue,
+    tintedGrayHue: DEFAULTS.baseHue,
+    tintedGrayInfluence: DEFAULTS.tintedGrayInfluence,
     chromaCurve: { ...DEFAULTS.chromaCurve },
     lightnessCurve: { ...DEFAULTS.lightnessCurve },
     lightnessCurveMode: DEFAULTS.lightnessCurveMode,
@@ -239,17 +247,30 @@ export function normalizeSettings(rawSettings, paletteBackground = "#F9FAF7") {
   const lightnessSCurve = isLegacy
     ? { ...defaults.lightnessSCurve }
     : normalizeLightnessSCurve(source.lightnessSCurve, defaults.lightnessSCurve);
+  const baseHue = isLegacy
+    ? legacyBaseHue(source)
+    : normalizeHue(source.baseHue, defaults.baseHue);
+  const tintedGrayHue = isMissingOptionalNumber(source.tintedGrayHue)
+    ? baseHue
+    : normalizeHue(source.tintedGrayHue, baseHue);
+  const tintedGrayInfluence = isMissingOptionalNumber(source.tintedGrayInfluence)
+    ? defaults.tintedGrayInfluence
+    : normalizeRangeValue(
+        source.tintedGrayInfluence,
+        LIMITS.tintedGrayInfluence,
+        defaults.tintedGrayInfluence,
+      );
 
   return {
-    version: 6,
+    version: 7,
     // Preserve the appearance of saved palettes from before this setting.
     toneBalance: normalizeToneBalance(
       source.toneBalance,
       Number(source.version) < 6 ? 0 : DEFAULTS.toneBalance,
     ),
-    baseHue: isLegacy
-      ? legacyBaseHue(source)
-      : normalizeHue(source.baseHue, defaults.baseHue),
+    baseHue,
+    tintedGrayHue,
+    tintedGrayInfluence,
     chromaCurve,
     lightnessCurve,
     lightnessCurveMode,
@@ -809,6 +830,20 @@ export function generatePalette(
   let gamutWarningCount = 0;
   const stepCount = settings.stepCount;
   const stepDenominator = Math.max(stepCount - 1, 1);
+  const tintedGrayHue = normalizeHue(
+    settings.tintedGrayHue,
+    normalizeHue(settings.baseHue, DEFAULTS.baseHue),
+  );
+  const tintedGrayInfluence = normalizeRangeValue(
+    settings.tintedGrayInfluence,
+    LIMITS.tintedGrayInfluence,
+    DEFAULTS.tintedGrayInfluence,
+  );
+  const tintedGrayHueRadians = (tintedGrayHue * Math.PI) / 180;
+  const tintedGrayHueVector = {
+    cosHue: Math.cos(tintedGrayHueRadians),
+    sinHue: Math.sin(tintedGrayHueRadians),
+  };
   const hues = Array.from({ length: settings.hueCount }, (_, hueIndex) => {
     const hueOffset = (hueIndex * 360) / settings.hueCount;
     const hue = wrapHue(settings.baseHue + hueOffset);
@@ -869,6 +904,44 @@ export function generatePalette(
     });
   }
 
+  if (steps.length > 0) {
+    const tintedGrayColumn = {
+      type: "tinted-grayscale",
+      hue: tintedGrayHue,
+      swatches: [],
+    };
+    columns.push(tintedGrayColumn);
+
+    steps.forEach(({ progress, L, C }, stepIndex) => {
+      // Visual-tuning ceilings, not perceptual thresholds.
+      const requestedTintChroma =
+        Math.min(C * 0.15, 0.02) * (tintedGrayInfluence / 100);
+      const tintChroma = getSharedRowChroma(L, requestedTintChroma, [
+        tintedGrayHueVector,
+      ]);
+      const swatch = {
+        ...createSwatchColor(
+          L,
+          tintChroma,
+          tintedGrayHue,
+          tintedGrayHueVector.cosHue,
+          tintedGrayHueVector.sinHue,
+        ),
+        isOutOfSrgbGamut:
+          tintChroma < requestedTintChroma - CHROMA_MATCH_EPSILON,
+        stepIndex,
+        stepNumber: stepIndex + 1,
+        progress,
+        hueOffset: 0,
+        columnType: "tinted-grayscale",
+      };
+      if (swatch.isOutOfSrgbGamut) {
+        gamutWarningCount += 1;
+      }
+      tintedGrayColumn.swatches.push(swatch);
+    });
+  }
+
   for (const hueVector of hues) {
     const { hue, hueOffset, cosHue, sinHue } = hueVector;
     const swatches = [];
@@ -910,7 +983,7 @@ export function generatePalette(
 
   return {
     columns,
-    totalColors: (settings.hueCount + 1) * settings.stepCount,
+    totalColors: (settings.hueCount + 2) * settings.stepCount,
     gamutWarningCount,
   };
 }
@@ -923,6 +996,7 @@ function formatExportHue(hue) {
 export function groupPaletteByHue(palette) {
   const exportPalette = {
     grayscale: [],
+    tintedGrayscale: { hue: null, colors: [] },
     hues: [],
   };
 
@@ -937,6 +1011,14 @@ export function groupPaletteByHue(palette) {
 
     if (column.type === "grayscale" || column.hue === null) {
       exportPalette.grayscale.push(...colors);
+      return;
+    }
+
+    if (column.type === "tinted-grayscale") {
+      exportPalette.tintedGrayscale = {
+        hue: formatExportHue(column.hue),
+        colors,
+      };
       return;
     }
 

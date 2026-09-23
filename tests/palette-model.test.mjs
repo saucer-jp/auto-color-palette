@@ -29,6 +29,10 @@ import {
   parseSettingsFromUrl,
 } from "../settings-url.mjs";
 
+function hueColumns(palette) {
+  return palette.columns.filter((column) => column.type === "hue");
+}
+
 test("three-point curves pass through their control points", () => {
   const curve = { start: 0.1, middle: 0.35, end: 0.8 };
 
@@ -134,12 +138,140 @@ test("palette generation uses absolute hues and grayscale chroma zero", () => {
   };
   const palette = generatePalette(settings);
 
-  assert.equal(palette.columns.length, 5);
-  assert.equal(palette.totalColors, 25);
-  assert.equal(palette.columns[1].hue, 350);
-  assert.equal(palette.columns[2].hue, 80);
-  assert.equal(palette.columns[4].hue, 260);
+  assert.equal(palette.columns.length, 6);
+  assert.equal(palette.totalColors, 30);
+  assert.equal(palette.columns[1].type, "tinted-grayscale");
+  assert.equal(palette.columns[1].hue, DEFAULTS.baseHue);
+  assert.equal(palette.columns[2].hue, 350);
+  assert.equal(palette.columns[3].hue, 80);
+  assert.equal(palette.columns[5].hue, 260);
   assert.ok(palette.columns[0].swatches.every((swatch) => swatch.C === 0));
+});
+
+test("tinted grayscale uses the grayscale lightness steps in custom and S-curve modes", () => {
+  for (const lightnessCurveMode of Object.values(LIGHTNESS_CURVE_MODES)) {
+    const settings = normalizeSettings({
+      ...createDefaultSettings(),
+      baseHue: 172.4,
+      tintedGrayHue: 31.7,
+      tintedGrayInfluence: 100,
+      hueCount: 7,
+      stepCount: 9,
+      lightnessCurveMode,
+      lightnessCurve: { start: 0.08, middle: 0.52, end: 0.94 },
+      lightnessSCurve: { start: 0.08, middle: 0.61, end: 0.94, amount: 0.8 },
+    });
+    const palette = generatePalette(settings, { chromaRecovery: 0 });
+    const grayscale = palette.columns[0].swatches;
+    const tinted = palette.columns[1].swatches;
+
+    assert.equal(palette.columns[1].type, "tinted-grayscale");
+    assert.equal(palette.columns[1].hue, settings.tintedGrayHue);
+    tinted.forEach((swatch, index) => {
+      assert.equal(swatch.L, grayscale[index].L);
+      assert.equal(swatch.progress, grayscale[index].progress);
+      assert.equal(swatch.stepIndex, grayscale[index].stepIndex);
+      assert.equal(swatch.stepNumber, grayscale[index].stepNumber);
+      assert.equal(swatch.H, settings.tintedGrayHue);
+    });
+  }
+});
+
+test("tinted grayscale chroma is capped by the shared row tone and influence", () => {
+  const settings = normalizeSettings({
+    ...createDefaultSettings(),
+    tintedGrayHue: 312.8,
+    tintedGrayInfluence: 100,
+    hueCount: 24,
+    stepCount: 12,
+    chromaCurve: { start: 0.04, middle: 0.32, end: 0.12 },
+  });
+  const palette = generatePalette(settings, { chromaRecovery: 0 });
+  const commonHues = hueColumns(palette);
+
+  palette.columns[1].swatches.forEach((swatch, index) => {
+    const rowChroma = commonHues[0].swatches[index].C;
+    assert.ok(swatch.C <= rowChroma * 0.15 + 1e-12);
+    assert.ok(swatch.C <= 0.02 + 1e-12);
+  });
+
+  const lowerInfluence = generatePalette({
+    ...settings,
+    tintedGrayInfluence: 35,
+  }, { chromaRecovery: 0 });
+  lowerInfluence.columns[1].swatches.forEach((swatch, index) => {
+    assert.ok(swatch.C <= palette.columns[1].swatches[index].C * 0.35 + 1e-12);
+  });
+});
+
+test("tinted grayscale remains in sRGB after rounding OKLCH metadata", () => {
+  for (const lightnessCurveMode of Object.values(LIGHTNESS_CURVE_MODES)) {
+    for (const tintedGrayHue of [0, 61.2, 183.4, 359.9]) {
+      const palette = generatePalette({
+        ...createDefaultSettings(),
+        tintedGrayHue,
+        tintedGrayInfluence: 100,
+        hueCount: 24,
+        stepCount: 17,
+        lightnessCurveMode,
+        lightnessCurve: { start: 0, middle: 0.5, end: 1 },
+        lightnessSCurve: { start: 0, middle: 0.5, end: 1, amount: 0.8 },
+        chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
+      });
+
+      palette.columns[1].swatches.forEach((swatch) => {
+        const roundedRgb = oklchToSrgb(
+          Number(swatch.L.toFixed(6)),
+          Number(swatch.C.toFixed(6)),
+          Number(swatch.H.toFixed(6)),
+        );
+        assert.ok(
+          Object.values(roundedRgb).every(
+            (channel) => channel >= 0 && channel <= 1,
+          ),
+          `${lightnessCurveMode}/${tintedGrayHue}/${swatch.stepNumber}: rounded OKLCH is in sRGB`,
+        );
+      });
+    }
+  }
+});
+
+test("zero tinted-gray influence matches neutral HEX", () => {
+  const settings = normalizeSettings({
+    ...createDefaultSettings(),
+    baseHue: 183.4,
+    tintedGrayHue: 21.7,
+    tintedGrayInfluence: 0,
+    hueCount: 6,
+    stepCount: 8,
+  });
+  const palette = generatePalette(settings);
+
+  palette.columns[1].swatches.forEach((swatch, index) => {
+    assert.equal(swatch.C, 0);
+    assert.equal(swatch.hex, palette.columns[0].swatches[index].hex);
+  });
+});
+
+test("tinted-gray hue changes only the tinted grayscale column", () => {
+  const settings = normalizeSettings({
+    ...createDefaultSettings(),
+    baseHue: 183.4,
+    tintedGrayHue: 21.7,
+    tintedGrayInfluence: 100,
+    hueCount: 6,
+    stepCount: 8,
+  });
+  const palette = generatePalette(settings);
+  const changedTintHue = generatePalette({ ...settings, tintedGrayHue: 287.6 });
+
+  assert.ok(
+    changedTintHue.columns[1].swatches.some(
+      (swatch, index) => swatch.hex !== palette.columns[1].swatches[index].hex,
+    ),
+  );
+  assert.deepEqual(hueColumns(changedTintHue), hueColumns(palette));
+  assert.deepEqual(changedTintHue.columns[0], palette.columns[0]);
 });
 
 test("palette generation keeps each row's colored OKLab lightness uniform", () => {
@@ -167,7 +299,7 @@ test("palette generation keeps each row's colored OKLab lightness uniform", () =
     const targetTone = getPerceptualTone(
       palette.columns[0].swatches[stepIndex].hex,
     );
-    const baselineTones = palette.columns.slice(1).map((column) =>
+    const baselineTones = hueColumns(palette).map((column) =>
       getPerceptualTone(
         getSwatchColor(
           lightness,
@@ -176,7 +308,7 @@ test("palette generation keeps each row's colored OKLab lightness uniform", () =
         ).hex,
       ),
     );
-    const matchedTones = palette.columns.slice(1).map((column) =>
+    const matchedTones = hueColumns(palette).map((column) =>
       getPerceptualTone(column.swatches[stepIndex].hex),
     );
 
@@ -226,7 +358,7 @@ test("uniform rows retain matching colored chroma after sRGB gamut mapping", () 
   const palette = generatePalette(settings, { chromaRecovery: 0 });
 
   for (let rowIndex = 0; rowIndex < settings.stepCount; rowIndex += 1) {
-    const colors = palette.columns.slice(1).map((column) =>
+    const colors = hueColumns(palette).map((column) =>
       srgbToOklch(column.swatches[rowIndex].hex),
     );
     const chromas = colors.map((color) => color.C);
@@ -249,13 +381,13 @@ test("shared row chroma retains requests that fit and reaches the common gamut l
   const palette = generatePalette(settings);
 
   for (const rowIndex of [0, 4]) {
-    for (const column of palette.columns.slice(1)) {
+    for (const column of hueColumns(palette)) {
       assert.equal(column.swatches[rowIndex].C, 0.02);
       assert.equal(column.swatches[rowIndex].isOutOfSrgbGamut, false);
     }
   }
 
-  const middleRow = palette.columns.slice(1).map((column) => column.swatches[2]);
+  const middleRow = hueColumns(palette).map((column) => column.swatches[2]);
   assert.ok(middleRow.every((swatch) => swatch.C > 0.09 && swatch.C < 0.4));
   assert.ok(middleRow.every((swatch) => swatch.isOutOfSrgbGamut));
   assert.ok(
@@ -278,13 +410,13 @@ test("common gamut uses the displayed hues rather than unrelated hues", () => {
   const pair = generatePalette(settings);
   const full = generatePalette({ ...settings, hueCount: 24 });
   assert.ok(
-    pair.columns[1].swatches[0].C > full.columns[1].swatches[0].C + 0.003,
+    pair.columns[2].swatches[0].C > full.columns[2].swatches[0].C + 0.003,
   );
 });
 
 test("colored row uniformity does not require identical CSS grayscale output", () => {
   const palette = generatePalette({ ...createDefaultSettings(), toneBalance: 0 });
-  const row = palette.columns.slice(1).map((column) => column.swatches[5].hex);
+  const row = hueColumns(palette).map((column) => column.swatches[5].hex);
   const grayscale = row.map(getSrgbGrayscaleTone);
   const lightness = row.map(getPerceptualTone);
   const chroma = row.map((hex) => srgbToOklch(hex).C);
@@ -313,10 +445,10 @@ test("recovery raises chroma progressively while retaining hue and lightness", (
   for (const chromaRecovery of [0.25, 0.5, 0.75, 1]) {
     const palette = generatePalette(settings, { chromaRecovery });
     assert.deepEqual(palette.columns[0], uniform.columns[0]);
-    palette.columns.slice(1).forEach((column, columnIndex) => {
+    hueColumns(palette).forEach((column, columnIndex) => {
       column.swatches.forEach((swatch, rowIndex) => {
-        const baseline = uniform.columns[columnIndex + 1].swatches[rowIndex];
-        const prior = previous.columns[columnIndex + 1].swatches[rowIndex];
+        const baseline = uniform.columns[columnIndex + 2].swatches[rowIndex];
+        const prior = previous.columns[columnIndex + 2].swatches[rowIndex];
         assert.equal(swatch.L, baseline.L);
         assert.equal(swatch.H, baseline.H);
         assert.ok(swatch.C >= prior.C);
@@ -328,34 +460,34 @@ test("recovery raises chroma progressively while retaining hue and lightness", (
     previous = palette;
   }
   const half = generatePalette(settings, { chromaRecovery: 0.5 });
-  assert.ok(half.columns[1].swatches[5].C > 0.13);
-  assert.ok(previous.columns[1].swatches[5].C > 0.16);
+  assert.ok(half.columns[2].swatches[5].C > 0.13);
+  assert.ok(previous.columns[2].swatches[5].C > 0.16);
 });
 
 test("upper-half recovery raises maximum chroma while preserving the midpoint", () => {
   const settings = createDefaultSettings();
   const half = generatePalette(settings, { chromaRecovery: 0.5 });
   // Established midpoint sample from the first recovery implementation.
-  assert.equal(half.columns[1].swatches[5].hex, "#4B7CCD");
-  assert.ok(Math.abs(half.columns[1].swatches[5].C - 0.1354614406) < 1e-9);
+  assert.equal(half.columns[2].swatches[5].hex, "#4B7CCD");
+  assert.ok(Math.abs(half.columns[2].swatches[5].C - 0.1354614406) < 1e-9);
 
   const full = generatePalette(settings, { chromaRecovery: 1 });
-  assert.equal(full.columns[1].swatches[5].C, settings.chromaCurve.middle);
+  assert.equal(full.columns[2].swatches[5].C, settings.chromaCurve.middle);
 
   const highChroma = generatePalette({
     ...settings,
     chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
   }, { chromaRecovery: 1 });
-  const maximum = Math.max(...highChroma.columns.slice(1).flatMap((column) =>
+  const maximum = Math.max(...hueColumns(highChroma).flatMap((column) =>
     column.swatches.map(({ C }) => C),
   ));
   // Previously even a 0.4 request topped out below 0.18 in this palette.
   assert.ok(maximum > 0.24);
 
   const justAboveHalf = generatePalette(settings, { chromaRecovery: 0.500001 });
-  half.columns.slice(1).forEach((column, columnIndex) => {
+  hueColumns(half).forEach((column, columnIndex) => {
     column.swatches.forEach((swatch, rowIndex) => {
-      const next = justAboveHalf.columns[columnIndex + 1].swatches[rowIndex];
+      const next = justAboveHalf.columns[columnIndex + 2].swatches[rowIndex];
       assert.ok(next.C >= swatch.C && next.C - swatch.C < 1e-6);
     });
   });
@@ -371,8 +503,8 @@ test("recovery is subdued near white and black compared with midtones", () => {
   const uniform = generatePalette(settings, { chromaRecovery: 0 });
   const recovered = generatePalette(settings, { chromaRecovery: 1 });
   const relativeGain = (rowIndex) => {
-    const common = uniform.columns[1].swatches[rowIndex].C;
-    const maximum = Math.max(...recovered.columns.slice(1).map((column) =>
+    const common = uniform.columns[2].swatches[rowIndex].C;
+    const maximum = Math.max(...hueColumns(recovered).map((column) =>
       column.swatches[rowIndex].C,
     ));
     return common === 0 ? 0 : (maximum - common) / common;
@@ -415,7 +547,7 @@ test("recovered high-chroma palettes keep rendered lightness and rounded metadat
       for (const chromaRecovery of [0.5, 1]) {
         const palette = generatePalette(settings, { chromaRecovery });
         let warningCount = 0;
-        palette.columns.slice(1).forEach((column) => {
+        hueColumns(palette).forEach((column) => {
           column.swatches.forEach((swatch, rowIndex) => {
             const rgb = oklchToSrgb(
               Number(swatch.L.toFixed(6)),
@@ -432,7 +564,7 @@ test("recovered high-chroma palettes keep rendered lightness and rounded metadat
         const exported = groupPaletteByHue(palette);
         assert.deepEqual(
           exported.hues.map((group) => group.colors),
-          palette.columns.slice(1).map((column) => column.swatches.map(({ hex }) => hex)),
+          hueColumns(palette).map((column) => column.swatches.map(({ hex }) => hex)),
         );
       }
     }
@@ -490,7 +622,7 @@ test("zero-chroma rows and black/white endpoints match the neutral reference", (
         const swatch = column.swatches[rowIndex];
         assert.equal(swatch.C, 0);
         assert.equal(swatch.hex, palette.columns[0].swatches[rowIndex].hex);
-        assert.equal(swatch.isOutOfSrgbGamut, C > 0);
+        assert.equal(swatch.isOutOfSrgbGamut, column.type === "hue" && C > 0);
       }
     }
   }
@@ -511,7 +643,7 @@ test("high-chroma custom and S curves keep colored rows aligned across hue sets"
         chromaCurve: { start: 0.4, middle: 0.4, end: 0.4 },
       });
       for (let rowIndex = 0; rowIndex < 30; rowIndex += 1) {
-        const swatches = palette.columns.slice(1).map((column) =>
+        const swatches = hueColumns(palette).map((column) =>
           column.swatches[rowIndex],
         );
         const colors = swatches.map(({ hex }) => srgbToOklch(hex));
@@ -554,9 +686,7 @@ test("tone-matched hue colors stay in sRGB for consistent rendering", () => {
     stepCount: 16,
   };
   const palette = generatePalette(settings);
-  const hueSwatches = palette.columns
-    .slice(1)
-    .flatMap((column) => column.swatches);
+  const hueSwatches = hueColumns(palette).flatMap((column) => column.swatches);
 
   hueSwatches.forEach((swatch) => {
     const rgb = oklchToSrgb(
@@ -592,10 +722,10 @@ test("reference high-chroma settings keep each rendered row aligned", () => {
     showGamutWarnings: false,
   });
   const palette = generatePalette(settings);
-  const hueColumns = palette.columns.slice(1);
+  const ordinaryHueColumns = hueColumns(palette);
   const rowRanges = palette.columns[0].swatches.map((grayscaleSwatch, index) => {
     const targetTone = getPerceptualTone(grayscaleSwatch.hex);
-    const tones = hueColumns.map((column) =>
+    const tones = ordinaryHueColumns.map((column) =>
       getPerceptualTone(column.swatches[index].hex),
     );
 
@@ -621,10 +751,10 @@ test("user reference settings keep rendered sRGB rows aligned", () => {
       "&hueCount=24&stepCount=30&gap=0&showGamutWarnings=0",
   );
   const palette = generatePalette(settings);
-  const hueColumns = palette.columns.slice(1);
+  const ordinaryHueColumns = hueColumns(palette);
   const rowRanges = palette.columns[0].swatches.map((grayscaleSwatch, index) => {
     const targetTone = getPerceptualTone(grayscaleSwatch.hex);
-    const tones = hueColumns.map((column) =>
+    const tones = ordinaryHueColumns.map((column) =>
       getPerceptualTone(column.swatches[index].hex),
     );
 
@@ -650,7 +780,7 @@ test("user reference settings align colored tone and reduce grayscale steps as a
       "&hueCount=24&stepCount=30&gap=0&showGamutWarnings=0",
   );
   const palette = generatePalette(settings);
-  const hueColumns = palette.columns.slice(1);
+  const ordinaryHueColumns = hueColumns(palette);
   const evaluateLightnessForRow = createLightnessEvaluator(
     settings.lightnessCurve,
     settings.lightnessCurveMode,
@@ -666,7 +796,7 @@ test("user reference settings align colored tone and reduce grayscale steps as a
     const progress = rowIndex / stepDenominator;
     const lightness = evaluateLightnessForRow(progress);
     const chroma = evaluateChromaForRow(progress);
-    const baselineGrayscaleTones = hueColumns.map((column) =>
+    const baselineGrayscaleTones = ordinaryHueColumns.map((column) =>
       getSrgbGrayscaleTone(
         getSwatchColor(
           lightness,
@@ -675,11 +805,11 @@ test("user reference settings align colored tone and reduce grayscale steps as a
         ).hex,
       ),
     );
-    const matchedGrayscaleTones = hueColumns.map((column) =>
+    const matchedGrayscaleTones = ordinaryHueColumns.map((column) =>
       getSrgbGrayscaleTone(column.swatches[rowIndex].hex),
     );
     const targetPerceptualTone = getPerceptualTone(grayscaleSwatch.hex);
-    const matchedPerceptualTones = hueColumns.map((column) =>
+    const matchedPerceptualTones = ordinaryHueColumns.map((column) =>
       getPerceptualTone(column.swatches[rowIndex].hex),
     );
 
@@ -719,8 +849,8 @@ test("palette generation handles the maximum supported palette size", () => {
   };
   const palette = generatePalette(settings);
 
-  assert.equal(palette.totalColors, 750);
-  assert.equal(palette.columns.length, 25);
+  assert.equal(palette.totalColors, 780);
+  assert.equal(palette.columns.length, 26);
   assert.ok(palette.columns.every((column) => column.swatches.length === 30));
   const gamutWarningCount = palette.columns.reduce(
     (total, column) =>
@@ -741,7 +871,7 @@ test("palette export groups colors by hue and preserves column order", () => {
   const palette = generatePalette(settings);
   const exportData = groupPaletteByHue(palette);
 
-  assert.deepEqual(Object.keys(exportData), ["grayscale", "hues"]);
+  assert.deepEqual(Object.keys(exportData), ["grayscale", "tintedGrayscale", "hues"]);
   assert.equal(exportData.grayscale.length, 3);
   assert.deepEqual(
     exportData.hues.map((group) => group.hue),
@@ -751,9 +881,13 @@ test("palette export groups colors by hue and preserves column order", () => {
     exportData.grayscale,
     palette.columns[0].swatches.map((swatch) => swatch.hex),
   );
+  assert.deepEqual(exportData.tintedGrayscale, {
+    hue: DEFAULTS.baseHue,
+    colors: palette.columns[1].swatches.map((swatch) => swatch.hex),
+  });
   assert.deepEqual(
     exportData.hues[0].colors,
-    palette.columns[1].swatches.map((swatch) => swatch.hex),
+    palette.columns[2].swatches.map((swatch) => swatch.hex),
   );
 
   assert.deepEqual(JSON.parse(serializePaletteExport(palette)), exportData);
@@ -780,7 +914,7 @@ test("hue columns keep precise equal spacing internally", () => {
     stepCount: 5,
   };
   const palette = generatePalette(settings);
-  const hues = palette.columns.slice(1).map((column) => column.hue);
+  const hues = hueColumns(palette).map((column) => column.hue);
 
   hues.forEach((hue, index) => {
     assert.ok(Math.abs(hue - ((12.3 + (index * 360) / 7) % 360)) < 0.000001);
@@ -810,8 +944,10 @@ test("legacy settings migrate only the old hue and preserve unrelated settings",
     "#F9FAF7",
   );
 
-  assert.equal(settings.version, 6);
+  assert.equal(settings.version, 7);
   assert.equal(settings.baseHue, 259.8);
+  assert.equal(settings.tintedGrayHue, settings.baseHue);
+  assert.equal(settings.tintedGrayInfluence, DEFAULTS.tintedGrayInfluence);
   assert.equal(settings.paletteBackground, "#101010");
   assert.equal(settings.hueCount, 6);
   assert.equal(settings.stepCount, 8);
@@ -823,6 +959,44 @@ test("legacy settings migrate only the old hue and preserve unrelated settings",
   assert.equal(Object.hasOwn(settings, "baseColor"), false);
   assert.equal(Object.hasOwn(settings, "darkestLightness"), false);
   assert.equal(Object.hasOwn(settings, "lightestLightness"), false);
+});
+
+test("tinted grayscale settings inherit old hues and normalize their own bounds", () => {
+  const inherited = normalizeSettings({
+    version: 6,
+    baseHue: 182.26,
+    tintedGrayHue: "",
+    tintedGrayInfluence: null,
+  });
+  assert.equal(inherited.tintedGrayHue, inherited.baseHue);
+  assert.equal(inherited.tintedGrayInfluence, DEFAULTS.tintedGrayInfluence);
+
+  const independent = normalizeSettings({
+    version: 7,
+    baseHue: 182.26,
+    tintedGrayHue: 359.96,
+    tintedGrayInfluence: 101.3,
+  });
+  assert.equal(independent.baseHue, 182.3);
+  assert.equal(independent.tintedGrayHue, 0);
+  assert.equal(independent.tintedGrayInfluence, 100);
+  assert.equal(
+    normalizeSettings({
+      version: 7,
+      baseHue: 182.3,
+      tintedGrayHue: "invalid",
+      tintedGrayInfluence: "invalid",
+    }).tintedGrayHue,
+    182.3,
+  );
+  assert.equal(
+    normalizeSettings({
+      version: 7,
+      baseHue: 182.3,
+      tintedGrayInfluence: "invalid",
+    }).tintedGrayInfluence,
+    DEFAULTS.tintedGrayInfluence,
+  );
 });
 
 test("S-curve settings are normalized independently from the custom curve", () => {
@@ -912,6 +1086,8 @@ test("settings URL round-trips every shareable setting", () => {
   const settings = normalizeSettings({
     version: 5,
     baseHue: 123.4,
+    tintedGrayHue: 241.6,
+    tintedGrayInfluence: 73,
     chromaCurve: { start: 0.04, middle: 0.28, end: 0.09 },
     lightnessCurve: { start: 0.21, middle: 0.58, end: 0.91 },
     lightnessCurveMode: LIGHTNESS_CURVE_MODES.S,
@@ -930,6 +1106,8 @@ test("settings URL round-trips every shareable setting", () => {
   const expectedParameters = [
     "settings",
     "baseHue",
+    "tintedGrayHue",
+    "tintedGrayInfluence",
     "chromaStart",
     "chromaMiddle",
     "chromaEnd",
@@ -956,6 +1134,33 @@ test("settings URL round-trips every shareable setting", () => {
     assert.equal(parsedUrl.searchParams.has(name), true, name + " should be in URL");
   });
   assert.deepEqual(parseSettingsFromUrl(url), settings);
+});
+
+test("older settings URLs inherit tint hue and malformed tint parameters fall back safely", () => {
+  const oldUrl = parseSettingsFromUrl(
+    "https://example.test/palette?settings=1&baseHue=197.26",
+  );
+  assert.equal(oldUrl.baseHue, 197.3);
+  assert.equal(oldUrl.tintedGrayHue, oldUrl.baseHue);
+  assert.equal(oldUrl.tintedGrayInfluence, DEFAULTS.tintedGrayInfluence);
+  assert.equal(
+    hasSettingsInUrl("https://example.test/palette?tintedGrayInfluence=82"),
+    true,
+  );
+
+  const malformedUrl = parseSettingsFromUrl(
+    "https://example.test/palette?settings=1&baseHue=197.26" +
+      "&tintedGrayHue=&tintedGrayInfluence=",
+  );
+  assert.equal(malformedUrl.tintedGrayHue, malformedUrl.baseHue);
+  assert.equal(malformedUrl.tintedGrayInfluence, DEFAULTS.tintedGrayInfluence);
+
+  const invalidUrl = parseSettingsFromUrl(
+    "https://example.test/palette?settings=1&baseHue=197.26" +
+      "&tintedGrayHue=bad&tintedGrayInfluence=101",
+  );
+  assert.equal(invalidUrl.tintedGrayHue, invalidUrl.baseHue);
+  assert.equal(invalidUrl.tintedGrayInfluence, 100);
 });
 
 test("gamut warning visibility is limited to localhost settings URLs", () => {
