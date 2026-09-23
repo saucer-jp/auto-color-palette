@@ -13,6 +13,8 @@ const SETTINGS_MARKER = "settings";
 const URL_PARAMETER_NAMES = Object.freeze([
   "toneBalance",
   "baseHue",
+  "tintedGrayHue",
+  "tintedGrayInfluence",
   "chromaStart",
   "chromaMiddle",
   "chromaEnd",
@@ -67,6 +69,16 @@ function readNumberParameter(parameters, name, fallback) {
   return Number.isFinite(value) ? value : fallback;
 }
 
+function readOptionalNumberParameter(parameters, name, fallback) {
+  const rawValue = parameters.get(name);
+  if (rawValue === null || rawValue.trim() === "") {
+    return fallback;
+  }
+
+  const value = Number(rawValue);
+  return Number.isFinite(value) ? value : fallback;
+}
+
 function readBooleanParameter(parameters, name, fallback) {
   const value = parameters.get(name);
 
@@ -105,7 +117,7 @@ export function getSettingsUrl(settings, currentUrl) {
   const normalized = normalizeSettings(
     {
       ...source,
-      version: source.version ?? 6,
+      version: source.version ?? 7,
       baseHue: source.baseHue ?? createDefaultSettings().baseHue,
     },
     defaultPaletteBackground,
@@ -121,6 +133,12 @@ export function getSettingsUrl(settings, currentUrl) {
   parameters.set(SETTINGS_MARKER, SETTINGS_URL_VERSION);
   setNumberParameter(parameters, "toneBalance", normalized.toneBalance);
   setNumberParameter(parameters, "baseHue", normalized.baseHue);
+  setNumberParameter(parameters, "tintedGrayHue", normalized.tintedGrayHue);
+  setNumberParameter(
+    parameters,
+    "tintedGrayInfluence",
+    normalized.tintedGrayInfluence,
+  );
   setNumberParameter(parameters, "chromaStart", normalized.chromaCurve.start);
   setNumberParameter(parameters, "chromaMiddle", normalized.chromaCurve.middle);
   setNumberParameter(parameters, "chromaEnd", normalized.chromaCurve.end);
@@ -180,16 +198,27 @@ export function parseSettingsFromUrl(
   const defaults = createDefaultSettings(paletteBackground);
   const parameters = url.searchParams;
   const isLocalhost = url.hostname === "localhost";
+  const baseHue = readNumberParameter(parameters, "baseHue", defaults.baseHue);
 
   return normalizeSettings(
     {
-      version: 6,
+      version: 7,
       toneBalance: parameters.has("toneBalance")
         ? normalizeToneBalance(parameters.get("toneBalance"))
         : url.hostname === "localhost" && parameters.has(DEV_CHROMA_RECOVERY_PARAMETER)
           ? parseDevChromaRecovery(url) * 100
           : 0,
-      baseHue: readNumberParameter(parameters, "baseHue", defaults.baseHue),
+      baseHue,
+      tintedGrayHue: readOptionalNumberParameter(
+        parameters,
+        "tintedGrayHue",
+        baseHue,
+      ),
+      tintedGrayInfluence: readOptionalNumberParameter(
+        parameters,
+        "tintedGrayInfluence",
+        defaults.tintedGrayInfluence,
+      ),
       chromaCurve: {
         start: readNumberParameter(
           parameters,

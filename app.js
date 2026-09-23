@@ -36,6 +36,12 @@ const elements = {
   root: document.documentElement,
   baseHue: document.querySelector("#base-hue"),
   baseHueValue: document.querySelector("#base-hue-value"),
+  tintedGrayHue: document.querySelector("#tinted-gray-hue"),
+  tintedGrayHueValue: document.querySelector("#tinted-gray-hue-value"),
+  tintedGrayInfluence: document.querySelector("#tinted-gray-influence"),
+  tintedGrayInfluenceValue: document.querySelector(
+    "#tinted-gray-influence-value",
+  ),
   paletteBackground: document.querySelector("#palette-background"),
   paletteBackgroundValue: document.querySelector("#palette-background-value"),
   hueCount: document.querySelector("#hue-count"),
@@ -181,9 +187,11 @@ function loadSettings() {
 
 function saveSettings() {
   const settings = {
-    version: 6,
+    version: 7,
     toneBalance: state.toneBalance,
     baseHue: state.baseHue,
+    tintedGrayHue: state.tintedGrayHue,
+    tintedGrayInfluence: state.tintedGrayInfluence,
     chromaCurve: { ...state.chromaCurve },
     lightnessCurve: { ...state.lightnessCurve },
     lightnessCurveMode: state.lightnessCurveMode,
@@ -377,6 +385,12 @@ function syncLightnessCurveControls() {
 function syncControls({ updateCurveGraphs = true } = {}) {
   elements.baseHue.value = String(state.baseHue);
   elements.baseHueValue.textContent = formatDegree(state.baseHue) + "°";
+  elements.tintedGrayHue.value = String(state.tintedGrayHue);
+  elements.tintedGrayHueValue.textContent =
+    formatDegree(state.tintedGrayHue) + "°";
+  elements.tintedGrayInfluence.value = String(state.tintedGrayInfluence);
+  elements.tintedGrayInfluenceValue.textContent =
+    state.tintedGrayInfluence + "%";
   elements.paletteBackground.value = state.paletteBackground.toLowerCase();
   elements.paletteBackgroundValue.textContent = state.paletteBackground;
   elements.hueCount.value = String(state.hueCount);
@@ -390,6 +404,8 @@ function syncControls({ updateCurveGraphs = true } = {}) {
   syncToneBalanceControl();
 
   updateRangeProgress(elements.baseHue);
+  updateRangeProgress(elements.tintedGrayHue);
+  updateRangeProgress(elements.tintedGrayInfluence);
   updateRangeProgress(elements.hueCount);
   updateRangeProgress(elements.stepCount);
   updateRangeProgress(elements.gap);
@@ -441,9 +457,11 @@ function readSettingsFromControls() {
   return normalizeSettings(
     {
       ...state,
-      version: 6,
+      version: 7,
       toneBalance: Number(elements.toneBalance.value),
       baseHue: Number(elements.baseHue.value),
+      tintedGrayHue: Number(elements.tintedGrayHue.value),
+      tintedGrayInfluence: Number(elements.tintedGrayInfluence.value),
       lightnessCurveMode,
       lightnessSCurve: {
         ...state.lightnessSCurve,
@@ -482,10 +500,13 @@ function renderFromControls(input) {
 }
 
 function getSwatchAriaLabel(swatch, hex) {
+  const hueLabel = "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
   const columnLabel =
     swatch.dataset.columnType === "grayscale"
       ? "グレースケール"
-      : "色相 " + formatDegree(Number(swatch.dataset.hue)) + "°";
+      : swatch.dataset.columnType === "tinted-grayscale"
+        ? "色付きグレー、" + hueLabel
+        : hueLabel;
   const gamutLabel =
     isGamutWarningDisplayEnabled() && swatch.dataset.gamutWarning === "true"
       ? "、sRGB色域に収めるため彩度を調整"
@@ -581,15 +602,17 @@ function createPaletteColumn(column, columnIndex) {
   section.className =
     column.type === "grayscale"
       ? "hue-column grayscale-column"
-      : "hue-column";
+      : column.type === "tinted-grayscale"
+        ? "hue-column tinted-grayscale-column"
+        : "hue-column";
   section.setAttribute("aria-labelledby", labelId);
   header.className = "hue-header";
   label.className = "hue-label";
   label.id = labelId;
-  label.textContent =
-    column.type === "grayscale"
-      ? "グレースケール"
-      : "色相 " + formatDegree(column.hue) + "°";
+  label.textContent = getPaletteColumnLabel(column);
+  if (column.type === "tinted-grayscale") {
+    label.title = "色付きグレー、色相 " + formatDegree(column.hue) + "°";
+  }
   stack.className = "swatch-stack";
 
   const swatches = column.swatches.map((swatchData) => {
@@ -601,6 +624,16 @@ function createPaletteColumn(column, columnIndex) {
   header.append(label);
   section.append(header, stack);
   return { element: section, label, swatches };
+}
+
+function getPaletteColumnLabel(column) {
+  if (column.type === "grayscale") {
+    return "グレースケール";
+  }
+  if (column.type === "tinted-grayscale") {
+    return "色付きグレー";
+  }
+  return "色相 " + formatDegree(column.hue) + "°";
 }
 
 function getReadableTextColor(hex) {
@@ -716,6 +749,8 @@ function updateGamutWarningCount(gamutCount) {
 function getPaletteCacheKey() {
   return [
     state.baseHue,
+    state.tintedGrayHue,
+    state.tintedGrayInfluence,
     state.chromaCurve.start,
     state.chromaCurve.middle,
     state.chromaCurve.end,
@@ -830,10 +865,13 @@ function buildPaletteDom(palette) {
 function updatePaletteDom(palette) {
   palette.columns.forEach((column, columnIndex) => {
     const columnDom = paletteDom.columns[columnIndex];
-    columnDom.label.textContent =
-      column.type === "grayscale"
-        ? "グレースケール"
-        : "色相 " + formatDegree(column.hue) + "°";
+    columnDom.label.textContent = getPaletteColumnLabel(column);
+    if (column.type === "tinted-grayscale") {
+      columnDom.label.title =
+        "色付きグレー、色相 " + formatDegree(column.hue) + "°";
+    } else {
+      columnDom.label.removeAttribute("title");
+    }
 
     column.swatches.forEach((swatchData, stepIndex) => {
       updateSwatch(columnDom.swatches[stepIndex], swatchData);
@@ -865,7 +903,7 @@ function renderPalette() {
   elements.root.style.setProperty("--hue-count", String(state.hueCount));
   elements.root.style.setProperty(
     "--palette-column-count",
-    String(state.hueCount + 1),
+    String(palette.columns.length),
   );
   elements.root.style.setProperty("--step-count", String(state.stepCount));
   elements.root.style.setProperty("--palette-gap", state.gap + "px");
@@ -1067,7 +1105,7 @@ function setCurvePoint(curveType, point, rawValue, persist = false) {
     state.lightnessCurveMode === LIGHTNESS_CURVE_MODES.S;
   const nextSettingsInput = {
     ...state,
-    version: 6,
+    version: 7,
   };
 
   if (isLightnessSCurve) {
@@ -1201,6 +1239,8 @@ function resetSettings() {
 function bindEvents() {
   [
     elements.baseHue,
+    elements.tintedGrayHue,
+    elements.tintedGrayInfluence,
     elements.paletteBackground,
     elements.hueCount,
     elements.stepCount,
